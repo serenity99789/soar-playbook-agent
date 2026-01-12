@@ -1,0 +1,190 @@
+SECTION A: BLOCKS_JSON
+```json
+[
+  {
+    "block_name": "Alert Ingestion & Enrichment",
+    "purpose": "Ingest the brute force success alert from the SIEM/Security Tool and enrich the associated user and IP address with contextual data from various sources.",
+    "inputs": [
+      "raw_alert_data (source: SIEM/Security Tool)",
+      "compromised_username",
+      "source_ip_address",
+      "timestamp"
+    ],
+    "outputs": [
+      "enriched_user_data (e.g., department, manager, last login, groups)",
+      "enriched_ip_data (e.g., geo-location, reputation, ASN)",
+      "alert_severity",
+      "incident_id (if initial creation)"
+    ],
+    "failure_handling": "If enrichment sources fail, proceed with available data and log a warning. If core alert data is missing, escalate to analyst for manual review.",
+    "sla_impact": "Low - Initial data gathering; impact on SLA is minimal unless critical data is missing, delaying subsequent steps.",
+    "analyst_notes": "Review enriched data for immediate red flags (e.g., user is C-level, IP is known malicious, unusual login location). Confirm if the alert indicates a 'success' or just excessive attempts."
+  },
+  {
+    "block_name": "Account Status Verification",
+    "purpose": "Verify the current status of the compromised account within the Identity Provider (e.g., Active Directory, Azure AD) and check for existing security measures.",
+    "inputs": [
+      "compromised_username"
+    ],
+    "outputs": [
+      "account_enabled_status (true/false)",
+      "account_locked_status (true/false)",
+      "mfa_status (enabled/disabled)",
+      "last_successful_login",
+      "last_password_change"
+    ],
+    "failure_handling": "If Identity Provider is unreachable, escalate to analyst immediately. If specific attributes cannot be retrieved, proceed and log missing data.",
+    "sla_impact": "Medium - Necessary prerequisite for containment. Failure blocks immediate mitigation actions.",
+    "analyst_notes": "Confirm account status manually if automation fails. Pay close attention if MFA was enabled but still bypassed (potential MFA fatigue or phishing). Check if account was already disabled/locked before the alert."
+  },
+  {
+    "block_name": "Account Containment & Reset",
+    "purpose": "Immediately contain the compromised account by disabling it and forcing a password reset to prevent further unauthorized access.",
+    "inputs": [
+      "compromised_username"
+    ],
+    "outputs": [
+      "account_disabled_confirmation (true/false)",
+      "password_reset_initiated_confirmation (true/false)",
+      "containment_timestamp"
+    ],
+    "failure_handling": "If account cannot be disabled or password reset fails, immediately alert analyst with critical priority. Retry once before escalating.",
+    "sla_impact": "High - Direct mitigation of ongoing threat. Critical for reducing blast radius.",
+    "analyst_notes": "Verify actions manually if automation reports failure. Note that disabling an account can impact critical business functions; ensure proper communication channels are ready for user/manager outreach."
+  },
+  {
+    "block_name": "Active Session Termination",
+    "purpose": "Terminate all active user sessions across all relevant services (e.g., O365, VPN, SSO applications) to revoke attacker's current access.",
+    "inputs": [
+      "compromised_username"
+    ],
+    "outputs": [
+      "sessions_terminated_confirmation (list of services & status)"
+    ],
+    "failure_handling": "If session termination fails for any service, log a warning and proceed, escalating to analyst to manually review and terminate sessions for the failed service(s).",
+    "sla_impact": "High - Prevents attacker persistence in existing sessions.",
+    "analyst_notes": "Some services may not support API-driven session termination; manual intervention might be required. Review logs to confirm no new sessions were created immediately after termination attempts."
+  },
+  {
+    "block_name": "Post-Compromise Activity Scan",
+    "purpose": "Search for suspicious post-compromise activities by the attacker, such as new mailbox forwarding rules, creation of new users, access to sensitive data, or unusual resource access.",
+    "inputs": [
+      "compromised_username",
+      "source_ip_address",
+      "timestamp_of_compromise"
+    ],
+    "outputs": [
+      "list_of_suspicious_activities (e.g., mail forwarding rules, new sign-ins from unusual locations, data access logs)",
+      "identified_attacker_techniques (mapped to MITRE ATT&CK)"
+    ],
+    "failure_handling": "If any log source is unreachable, log a warning and notify the analyst to manually check. Proceed with available log data.",
+    "sla_impact": "Medium - Identifies further attacker actions and potential scope of breach.",
+    "analyst_notes": "Prioritize investigation of identified suspicious activities. This step is crucial for understanding the attacker's intent and extent of compromise. Look for evidence of lateral movement or privilege escalation."
+  },
+  {
+    "block_name": "User & Manager Notification",
+    "purpose": "Notify the affected user and their manager about the account compromise and the actions taken (account disabled, password reset). Provide instructions for recovery.",
+    "inputs": [
+      "compromised_username",
+      "manager_email_address",
+      "notification_template"
+    ],
+    "outputs": [
+      "user_notified_confirmation (true/false)",
+      "manager_notified_confirmation (true/false)",
+      "notification_timestamp"
+    ],
+    "failure_handling": "If email notification fails, log an error and escalate to analyst to manually contact the user/manager via an alternative method.",
+    "sla_impact": "Low - Communication step, but important for user awareness and recovery process.",
+    "analyst_notes": "Ensure the notification message is clear, concise, and does not disclose sensitive information. Emphasize out-of-band communication for password reset instructions to prevent further compromise."
+  },
+  {
+    "block_name": "Incident Record Update & Case Closure Prep",
+    "purpose": "Consolidate all findings and actions into the incident record, ensuring full documentation for forensic analysis, reporting, and eventual case closure.",
+    "inputs": [
+      "incident_id",
+      "all_block_outputs (e.g., containment status, suspicious activities, notifications)",
+      "analyst_notes_from_review"
+    ],
+    "outputs": [
+      "updated_incident_record_link",
+      "case_status (e.g., 'Contained', 'Awaiting User Recovery')"
+    ],
+    "failure_handling": "If incident management system update fails, log an error and alert the analyst to manually update the record.",
+    "sla_impact": "Low - Documentation and reporting; critical for compliance and post-incident review.",
+    "analyst_notes": "Review the entire incident timeline and all collected evidence. Ensure all actions taken are properly documented. The case is ready for a final analyst review before full closure, pending user account recovery."
+  }
+]
+```
+
+SECTION B: DOCUMENTATION_TEXT
+
+### Block Name: Alert Ingestion & Enrichment
+**Purpose:** This block is the initial entry point for the playbook. It automatically ingests brute force success alerts from the configured Security Information and Event Management (SIEM) or other security tools. Upon ingestion, it enriches the raw alert data with vital contextual information about the compromised user (e.g., department, manager, groups, recent activity) and the attacking IP address (e.g., geo-location, reputation, ASN). This enrichment is crucial for rapid triage and understanding the potential impact.
+**NIST Incident Response Phase:** Detection & Analysis
+**MITRE ATT&CK Alignment:**
+*   **Tactic: Initial Access (TA0001)**
+    *   **Technique: Brute Force (T1110)** -> **Password Guessing (T1110.001)**: Directly aligns with identifying the success of a brute force attack.
+*   **Tactic: Reconnaissance (TA0043)**
+    *   **Technique: Active Scanning (T1595)** -> **Vulnerability Scanning (T1595.002)** / **Wordlist Scanning (T1595.001)**: The brute force itself often follows reconnaissance.
+**SOC SOPs:** Adheres to standard alert triage and initial investigation procedures, ensuring all relevant context is gathered before further actions. Automates the initial steps of a Tier 1 SOC analyst's workflow for this alert type.
+**Operational Details:** Integrates with services like Active Directory, Azure AD, HRIS, Threat Intelligence Platforms (TIPs), and geo-IP databases.
+
+### Block Name: Account Status Verification
+**Purpose:** Following initial enrichment, this block queries the primary Identity Provider (e.g., Active Directory, Azure AD) to ascertain the current status of the compromised account. This includes checking if the account is enabled/disabled, locked/unlocked, and if Multi-Factor Authentication (MFA) is configured. This information is critical for determining the immediate next steps and validating the alert's context.
+**NIST Incident Response Phase:** Detection & Analysis
+**MITRE ATT&CK Alignment:**
+*   **Tactic: Initial Access (TA0001)**
+    *   **Technique: Valid Accounts (T1078)**: Verifies the status of the account that has become valid for the attacker.
+*   **Tactic: Discovery (TA0007)**
+    *   **Technique: Account Discovery (T1087)**: While typically an attacker technique, this block performs a similar discovery for defensive purposes.
+**SOC SOPs:** Aligns with the "Verify Compromised Account" step in Account Compromise playbooks, ensuring accurate information before taking containment actions.
+**Operational Details:** Requires read access to the Identity Provider. A timeout or failure to retrieve status triggers a high-priority analyst alert.
+
+### Block Name: Account Containment & Reset
+**Purpose:** This is a critical containment block. Upon confirmation of a brute force success, the playbook immediately disables the compromised user account in the Identity Provider and initiates a password reset. These actions are paramount to revoke the attacker's current access and prevent any further unauthorized activity, directly mitigating the ongoing threat.
+**NIST Incident Response Phase:** Containment, Eradication & Recovery
+**MITRE ATT&CK Alignment:**
+*   **Tactic: Impact (TA0040)**
+    *   **Technique: Account Access Removal (T1531)**: Directly applies as the organization removes the attacker's access to the compromised account.
+*   **Tactic: Persistence (TA0003)**
+    *   **Technique: Valid Accounts (T1078)**: This action directly negates the attacker's persistence via valid accounts.
+**SOC SOPs:** This block executes the immediate containment measures outlined in the Account Compromise Incident Response Plan, prioritizing speed to minimize damage. This step typically requires a "Level 1" or "Critical" action in SOC procedures.
+**Operational Details:** Requires write permissions to the Identity Provider. Failure here mandates immediate analyst intervention due to the critical nature of the action.
+
+### Block Name: Active Session Termination
+**Purpose:** To ensure complete revocation of attacker access, this block automatically terminates all active sessions associated with the compromised user across various integrated services (e.g., cloud applications, VPNs, SSO providers). This prevents an attacker from maintaining access through an already established session, even if the account has been disabled.
+**NIST Incident Response Phase:** Containment
+**MITRE ATT&CK Alignment:**
+*   **Tactic: Persistence (TA0003)**
+    *   **Technique: Valid Accounts (T1078)**: Directly disrupts any existing attacker sessions using the compromised valid account.
+**SOC SOPs:** Part of the "Advanced Containment" steps in an account compromise playbook, ensuring all possible avenues of attacker access are closed.
+**Operational Details:** Integrates with various cloud providers (e.g., Azure, AWS, Google Cloud), VPN solutions, and SSO platforms via APIs. Some legacy systems may require manual session termination.
+
+### Block Name: Post-Compromise Activity Scan
+**Purpose:** This block is crucial for understanding the scope and impact of the breach. It performs an automated scan across various logging sources (e.g., SIEM, Mailbox Audit Logs, Cloud Activity Logs, Endpoint Detection and Response - EDR) to identify any suspicious activities performed by the attacker *after* gaining access. This includes checking for new mailbox rules, unusual login locations, access to sensitive data, privilege escalation attempts, or creation of new accounts.
+**NIST Incident Response Phase:** Eradication & Recovery, Post-Incident Activity
+**MITRE ATT&CK Alignment:**
+*   **Tactic: Persistence (TA0003)**
+    *   **Technique: Create Account (T1136)**: Searches for new user accounts created by the attacker.
+    *   **Technique: Mail Forwarding Rule (T1114.003)**: Looks for email exfiltration or redirection attempts.
+*   **Tactic: Privilege Escalation (TA0004)**, **Lateral Movement (TA0008)**, **Exfiltration (TA0010)**, **Impact (TA0040)**: This scan broadly covers techniques within these tactics.
+**SOC SOPs:** Directly supports the "Scope of Compromise" and "Eradication" phases of incident response, guiding further investigation and remediation efforts.
+**Operational Details:** Requires extensive read access to various security and IT systems' logs. Correlates activities around the time of compromise and from the attacker's known IP.
+
+### Block Name: User & Manager Notification
+**Purpose:** This block automates the communication process by notifying both the affected user and their direct manager about the account compromise. The notification includes details about the incident, actions taken (account disabled, password reset), and crucial next steps for the user to regain access securely. This ensures transparency and facilitates the recovery process.
+**NIST Incident Response Phase:** Eradication & Recovery
+**MITRE ATT&CK Alignment:** (Less direct MITRE alignment for communication, but supports overall IR process)
+*   **Tactic: Collection (TA0009)**
+    *   **Technique: Data from Network Shared Drive (T1039)** / **Data from Local System (T1005)**: Indirectly, by informing user, it helps prevent further data access by attacker.
+**SOC SOPs:** Follows established communication protocols for security incidents, ensuring timely and consistent messaging to stakeholders. This reduces manual overhead for analysts during stressful events.
+**Operational Details:** Integrates with email systems (e.g., Exchange, O365, G-Suite) and potentially internal messaging platforms. Templates ensure consistent messaging.
+
+### Block Name: Incident Record Update & Case Closure Prep
+**Purpose:** This final automated block aggregates all information gathered and actions performed throughout the playbook's execution. It updates the central incident management system (e.g., SIEM, ITSM) with a comprehensive summary, including enrichment data, containment status, identified suspicious activities, and notification confirmations. This ensures a complete audit trail and prepares the case for a final human analyst review and eventual closure, pending user recovery and any required post-incident remediation.
+**NIST Incident Response Phase:** Post-Incident Activity
+**MITRE ATT&CK Alignment:** (No direct MITRE technique, but essential for incident lifecycle management)
+*   Supports the overall defensive posture by ensuring lessons learned can be derived from well-documented incidents.
+**SOC SOPs:** Adheres to strict incident documentation requirements, enabling effective post-incident review, compliance reporting, and continuous improvement of security posture. Automates the bulk of post-incident administrative tasks.
+**Operational Details:** Requires write access to the incident management system. The output provides a summary dashboard for the analyst, making final review efficient.

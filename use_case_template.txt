@@ -1,0 +1,26 @@
+USE CASE NAME:
+<Short descriptive name>
+
+TRIGGER SOURCE:
+(SIEM / EDR / IAM / Email / Cloud / Other)
+
+TRIGGER CONDITION:
+(Example: Multiple failed logins followed by a success from same IP)
+
+PRIMARY ENTITY:
+(User / Host / IP / Application)
+
+SECONDARY ENTITIES:
+(IP, Username, Device ID, Session ID, etc.)
+
+ENVIRONMENT:
+(On-Prem / Azure / AWS / GCP / Hybrid)
+
+RISK CONSIDERATIONS:
+(VIP user, Admin account, Regulatory impact, etc.)
+
+EXPECTED RESPONSE TYPE:
+(Investigative only / Containment / Full IR)
+
+NOTES FOR SOC:
+(Any assumptions or exclusions)

@@ -1,0 +1,266 @@
+SECTION A: BLOCKS_JSON
+```json
+[
+  {
+    "block_name": "Alert_Enrichment_and_Validation",
+    "purpose": "To gather additional context for the initial brute force success alert and validate its authenticity and criticality. This includes collecting user, device, and network information.",
+    "inputs": {
+      "alert_id": "Unique identifier for the incoming alert",
+      "username": "Compromised account username",
+      "source_ip": "Attacker's source IP address",
+      "login_timestamp": "Timestamp of the successful brute force login",
+      "service_accessed": "Application or service accessed"
+    },
+    "outputs": {
+      "validation_status": "True Positive, False Positive, or Unconfirmed",
+      "user_risk_score": "Calculated risk score for the user",
+      "geographical_data": "Origin country, city, ISP of source_ip",
+      "device_details": "Last logged in device info (OS, IP) of the user",
+      "previous_failed_logins": "Count of failed logins preceding the success"
+    },
+    "failure_handling": "If enrichment fails, escalate to L2 analyst for manual investigation. If validation cannot confirm true positive, flag as 'Unconfirmed' and proceed with cautious containment steps, prioritizing user communication.",
+    "sla_impact": "High. This block initiates the playbook. Delays here directly impact MTTR. Target completion: < 2 minutes.",
+    "analyst_notes": "Review 'previous_failed_logins' count. A high count (e.g., >100) from a single IP before success strongly indicates brute force. Verify 'geographical_data' against user's typical login locations to detect 'impossible travel'."
+  },
+  {
+    "block_name": "User_Activity_Analysis",
+    "purpose": "To analyze the compromised user's recent login activities and post-login actions for suspicious behavior, identifying potential lateral movement or data exfiltration attempts.",
+    "inputs": {
+      "username": "Compromised account username",
+      "login_timestamp": "Timestamp of the successful brute force login",
+      "validation_status": "Validation result from previous block"
+    },
+    "outputs": {
+      "suspicious_login_locations": "List of unusual login locations post-compromise",
+      "unusual_resource_access": "List of resources accessed not typical for the user",
+      "email_forwarding_rules_changed": "Boolean indicating if email rules were modified",
+      "new_mfa_device_registered": "Boolean indicating if a new MFA device was added",
+      "session_duration_post_compromise": "Duration of the compromised session"
+    },
+    "failure_handling": "If activity logs are unavailable or incomplete, notify L2 analyst. Proceed to containment, but indicate limited visibility for the eradication phase.",
+    "sla_impact": "Medium. Provides crucial context for subsequent eradication steps. Delays can hinder the scope of compromise understanding. Target completion: < 5 minutes.",
+    "analyst_notes": "Focus on activities *after* the 'login_timestamp'. Look for changes in email forwarding, new mailbox rules, or access to sensitive files/applications not typically used by the user. If 'new_mfa_device_registered' is true, this is a critical indicator of persistence."
+  },
+  {
+    "block_name": "Account_Containment_and_Password_Reset",
+    "purpose": "To immediately contain the compromised account by forcing a password reset, terminating all active sessions, and if necessary, temporarily disabling the account.",
+    "inputs": {
+      "username": "Compromised account username",
+      "authentication_system": "Directory service or Identity Provider (e.g., Azure AD, Okta)",
+      "validation_status": "Validation result from Alert_Enrichment_and_Validation"
+    },
+    "outputs": {
+      "password_reset_status": "Success or Failure",
+      "session_termination_status": "Success or Failure",
+      "account_disabled_status": "Success, Failure, or Not Attempted (based on policy)",
+      "containment_timestamp": "Timestamp of containment actions"
+    },
+    "failure_handling": "If password reset or session termination fails, immediately escalate to L2 analyst. This is a critical failure as containment is not achieved. Instruct L2 to manually reset/terminate and consider stronger measures like temporary account lockout.",
+    "sla_impact": "Critical. This is the primary containment action. Failure or significant delay directly increases risk of further compromise. Target completion: < 1 minute.",
+    "analyst_notes": "Confirm successful password reset and session termination. If 'account_disabled_status' is 'Not Attempted', ensure policy dictates this or manually trigger if deemed necessary by severity. User should be instructed to change password upon next login."
+  },
+  {
+    "block_name": "Attacker_IP_Blocking_and_Threat_Intel_Check",
+    "purpose": "To block the attacker's source IP address at perimeter devices (firewall, WAF) and check its reputation against threat intelligence feeds to prevent further malicious activity.",
+    "inputs": {
+      "source_ip": "Attacker's source IP address",
+      "firewall_api_endpoint": "API endpoint for firewall management",
+      "threat_intel_platform": "Threat intelligence platform for lookup"
+    },
+    "outputs": {
+      "ip_blocking_status": "Success, Failure, or Already Blocked",
+      "threat_intel_report": "Reputation score, associated campaigns, malicious indicators for the IP",
+      "block_rule_id": "ID of the created firewall rule"
+    },
+    "failure_handling": "If IP blocking fails, log the error and escalate to L2 analyst for manual firewall rule creation. If threat intelligence lookup fails, proceed, but note the lack of TI context.",
+    "sla_impact": "High. Reduces immediate threat surface. Delays allow potential re-engagement or attacks against other accounts. Target completion: < 2 minutes.",
+    "analyst_notes": "Review the 'threat_intel_report'. If the IP is highly malicious (e.g., known C2, botnet), consider broader blocking policies. If 'ip_blocking_status' is 'Already Blocked', investigate why it was not effective."
+  },
+  {
+    "block_name": "Endpoint_and_Mailbox_Scan_Initiation",
+    "purpose": "To initiate automated scans on the compromised user's primary endpoint and mailbox for malware, persistence mechanisms, or unauthorized data.",
+    "inputs": {
+      "username": "Compromised account username",
+      "user_device_id": "ID of the user's primary endpoint",
+      "user_email_address": "Email address associated with the user",
+      "endpoint_detection_response_platform": "EDR platform API",
+      "email_security_gateway": "ESG platform API"
+    },
+    "outputs": {
+      "endpoint_scan_status": "Initiated, Failed, Not Applicable",
+      "mailbox_scan_status": "Initiated, Failed, Not Applicable",
+      "endpoint_scan_id": "ID of the initiated endpoint scan",
+      "mailbox_scan_id": "ID of the initiated mailbox scan"
+    },
+    "failure_handling": "If scans cannot be initiated, log the failure and notify L2 analyst to manually trigger scans or investigate root cause. Note that eradication steps will require manual effort.",
+    "sla_impact": "Medium. Critical for eradication and recovery phases. Delays prolong the time until the environment is clean. Target completion: < 3 minutes.",
+    "analyst_notes": "Monitor the initiated scans and review their results once complete. Look for new files, registry entries, suspicious processes, or unusual mailbox rules/folders. If no primary endpoint is associated, mark as 'Not Applicable'."
+  },
+  {
+    "block_name": "Communicate_with_User_and_Gather_Context",
+    "purpose": "To inform the compromised user about the incident, instruct them on necessary actions (e.g., password change), and gather additional context about recent activities or suspicious observations.",
+    "inputs": {
+      "username": "Compromised account username",
+      "user_email_address": "User's email address (for secure communication)",
+      "containment_timestamp": "Timestamp of containment actions",
+      "incident_id": "Unique identifier for the incident",
+      "contact_method": "Preferred method of initial user contact (e.g., email, chat)"
+    },
+    "outputs": {
+      "communication_status": "Sent, Failed, User Contacted",
+      "user_feedback_received": "Boolean indicating user response",
+      "user_confirmation_of_suspicious_activity": "Boolean indicating user's confirmation"
+    },
+    "failure_handling": "If automated communication fails (e.g., invalid email), escalate to L2 analyst for manual contact through alternative channels (e.g., phone, manager).",
+    "sla_impact": "Medium. Critical for user education, incident awareness, and recovery. Delays can lead to user frustration or lack of cooperation. Target completion: < 5 minutes.",
+    "analyst_notes": "The primary goal is to ensure the user knows their account was compromised and to provide instructions for re-securing it (e.g., changing password). Emphasize not using the compromised account until instructed. Securely ask about any recent unusual emails, login prompts, or activities."
+  },
+  {
+    "block_name": "Incident_Management_Platform_Update_and_Handover",
+    "purpose": "To consolidate all gathered information, update the incident record in the Incident Management Platform (IMP), and prepare for a seamless handover to a human analyst for deeper investigation and recovery.",
+    "inputs": {
+      "incident_id": "Unique identifier for the incident",
+      "username": "Compromised account username",
+      "source_ip": "Attacker's source IP address",
+      "validation_status": "Overall validation result",
+      "containment_timestamp": "Timestamp of containment actions",
+      "all_previous_outputs": "All data collected from prior blocks"
+    },
+    "outputs": {
+      "incident_status_updated": "Boolean indicating IMP update success",
+      "analyst_assigned": "L2 analyst assigned to the incident",
+      "incident_priority_set": "Priority level of the incident in IMP"
+    },
+    "failure_handling": "If IMP update fails, log the error and notify a human supervisor. Manual incident creation/update will be required. This is a critical administrative failure.",
+    "sla_impact": "Low. This is a finalization step for automation. Timely update ensures proper tracking and next steps, but doesn't directly mitigate active threat. Target completion: < 2 minutes.",
+    "analyst_notes": "Ensure all relevant evidence (logs, threat intel, user feedback) is attached to the incident record. Clearly document all automated actions taken and their outcomes. The assigned L2 analyst will be responsible for reviewing scan results, deep dive into logs, and coordinating full recovery."
+  }
+]
+```
+
+SECTION B: DOCUMENTATION_TEXT
+
+### SOAR Playbook: Account Compromise – Brute Force Success
+
+**Use Case Overview:**
+This playbook automates the initial response to an alert indicating a successful account login following a brute-force attack. The primary goal is rapid containment, investigation, and preparation for a human analyst's deeper dive into the incident, minimizing the impact of the compromise.
+
+---
+
+#### Block: Alert_Enrichment_and_Validation
+
+*   **Description:** This block is the entry point for the playbook. It systematically gathers additional context around the initial alert, such as the compromised user's identity, the attacker's source IP, the timestamp of the successful login, and the service accessed. It then cross-references this information with internal systems (e.g., HR directories, CMDB, geolocation services) to validate the alert's authenticity and assess its immediate criticality.
+*   **Purpose:** Rapidly confirm the legitimacy of the alert and collect foundational data for subsequent response actions.
+*   **MITRE ATT&CK Alignment:**
+    *   **T1078 - Valid Accounts:** This block confirms the use of valid accounts, often a result of successful brute force.
+    *   **T1133 - External Remote Services:** The analysis of login source and service accessed aligns with detecting unauthorized access via external services.
+*   **NIST Incident Response Alignment:**
+    *   **Detection & Analysis:** This block directly performs the initial steps of detecting a potential incident and gathering data for analysis.
+*   **SOC SOPs:** Adheres to the 'Initial Alert Triage' and 'Context Gathering' phases of typical SOC Standard Operating Procedures.
+*   **Inputs:** Alert ID, username, source IP, login timestamp, service accessed.
+*   **Outputs:** Validation status (True Positive, False Positive), user risk score, geographical data for the source IP, last known device details for the user, count of preceding failed logins.
+*   **Failure Handling:** If any enrichment step fails (e.g., API timeout), the playbook attempts to proceed with available data but logs the failure. If the validation cannot definitively confirm a true positive, the incident is flagged as 'Unconfirmed' and proceeds with cautious containment, requiring L2 analyst review.
+*   **SLA Impact:** High. This is the first automated step. Efficient execution is crucial for achieving low Mean Time To Respond (MTTR). Delays here directly impact the overall incident resolution time.
+
+---
+
+#### Block: User_Activity_Analysis
+
+*   **Description:** Following initial validation, this block queries user activity logs (e.g., SIEM, cloud provider logs) to identify any unusual or malicious actions taken by the compromised account *after* the successful login. This includes checking for logins from new locations, access to sensitive resources, changes to email forwarding rules, or the registration of new multi-factor authentication (MFA) devices.
+*   **Purpose:** Determine the scope of compromise, identify potential persistence mechanisms, and detect signs of lateral movement or data exfiltration.
+*   **MITRE ATT&CK Alignment:**
+    *   **T1078 - Valid Accounts:** Investigating actions taken with a compromised valid account.
+    *   **T1098 - Account Manipulation:** Specifically checking for changes like email forwarding rules or new MFA devices.
+    *   **T1531 - Account Access Removal:** Analyzing changes that could lead to maintaining access despite a password change.
+*   **NIST Incident Response Alignment:**
+    *   **Detection & Analysis:** This block is a core component of in-depth analysis to understand the nature and scope of the incident.
+*   **SOC SOPs:** Aligns with 'Initial Scope Assessment' and 'Indicators of Compromise (IOC) Hunting' within the SOC.
+*   **Inputs:** Compromised username, login timestamp, validation status.
+*   **Outputs:** Lists of suspicious login locations, unusual resource access, boolean flags for email forwarding rule changes or new MFA device registrations, and compromised session duration.
+*   **Failure Handling:** If activity logs are inaccessible or incomplete, the block logs the failure and notifies an L2 analyst, who will need to manually investigate through available channels. The playbook proceeds, but with reduced visibility into the compromise's scope.
+*   **SLA Impact:** Medium. This block provides vital information for targeted eradication. While not immediate containment, delays can prolong the eradication phase and lead to a less thorough recovery.
+
+---
+
+#### Block: Account_Containment_and_Password_Reset
+
+*   **Description:** This critical containment block initiates immediate actions on the compromised account. It automatically triggers a password reset for the specified username within the configured identity provider (e.g., Active Directory, Okta, Azure AD). Concurrently, it terminates all active sessions associated with the account to immediately cut off the attacker's access. Depending on organizational policy and severity, it may also temporarily disable the account.
+*   **Purpose:** To swiftly neutralize the attacker's current access to the compromised account and prevent further malicious activity.
+*   **MITRE ATT&CK Alignment:**
+    *   **M1049 - Multi-Factor Authentication:** Directly impacts account security by forcing a reset, often coupled with MFA re-enrollment.
+    *   **T1078 - Valid Accounts:** Addresses the core issue of a compromised valid account by invalidating the attacker's current access.
+*   **NIST Incident Response Alignment:**
+    *   **Containment:** This block performs the primary containment actions for the account.
+*   **SOC SOPs:** Directly executes 'Immediate Account Remediation' and 'Session Termination' procedures.
+*   **Inputs:** Compromised username, authentication system details, validation status.
+*   **Outputs:** Status of password reset, session termination, and account disablement (if attempted), and a timestamp of these containment actions.
+*   **Failure Handling:** Any failure in password reset or session termination triggers an immediate escalation to an L2 analyst. This is considered a critical failure as primary containment is not achieved, requiring urgent manual intervention.
+*   **SLA Impact:** Critical. This block directly mitigates the active threat. Delays or failures here significantly increase the risk of further compromise, data exfiltration, or lateral movement. Target completion: within 1 minute of validated alert.
+
+---
+
+#### Block: Attacker_IP_Blocking_and_Threat_Intel_Check
+
+*   **Description:** This block takes the attacker's source IP address identified during enrichment and automatically creates a block rule on relevant network perimeter devices (e.g., firewall, WAF) to prevent further ingress from that IP. Simultaneously, it queries integrated threat intelligence platforms to gather reputation data, historical context, and known associations for the IP, providing additional context for the investigation.
+*   **Purpose:** To prevent the attacker from re-engaging from the same IP address and to gain insights into the attacker's identity, capabilities, or broader campaigns.
+*   **MITRE ATT&CK Alignment:**
+    *   **M1037 - Filter Network Traffic:** Directly applies to blocking the malicious IP address at network boundaries.
+    *   **T1595 - Active Scanning:** If the IP is associated with scanning activity, blocking helps mitigate future reconnaissance.
+    *   **T1598 - Phishing for Information:** If the brute force was part of a larger phishing campaign, TI provides context.
+*   **NIST Incident Response Alignment:**
+    *   **Containment:** Blocking the IP contributes to immediate network-level containment.
+    *   **Analysis:** Threat intelligence gathering supports a deeper understanding of the threat actor.
+*   **SOC SOPs:** Executes 'Perimeter Blocking' and 'Threat Intelligence Enrichment' procedures.
+*   **Inputs:** Attacker's source IP, firewall API endpoint, threat intelligence platform.
+*   **Outputs:** Status of IP blocking, threat intelligence report for the IP, and the ID of the created firewall rule.
+*   **Failure Handling:** If IP blocking fails (e.g., API error), the failure is logged, and an L2 analyst is notified for manual firewall rule creation. If threat intelligence lookup fails, the playbook proceeds, but the analyst is informed of the missing TI context.
+*   **SLA Impact:** High. Blocking the IP swiftly reduces the immediate threat surface and potential for repeat attacks from the same source. Delays can expose other accounts or resources.
+
+---
+
+#### Block: Endpoint_and_Mailbox_Scan_Initiation
+
+*   **Description:** This block integrates with Endpoint Detection and Response (EDR) platforms and Email Security Gateways (ESG) to automatically initiate comprehensive scans on the compromised user's primary endpoint device and their mailbox. These scans aim to detect any malware, unauthorized scripts, persistence mechanisms (e.g., new registry keys, scheduled tasks), or suspicious email artifacts that might have been introduced by the attacker.
+*   **Purpose:** To begin the eradication phase by identifying and locating any malicious artifacts or changes made by the attacker on the user's systems and communications.
+*   **MITRE ATT&CK Alignment:**
+    *   **M1048 - Antivirus/Antimalware:** The initiation of scans directly aligns with using security software to detect and remove malicious code.
+    *   **T1059 - Command and Scripting Interpreter:** Scans help identify suspicious scripts or commands executed by an attacker.
+    *   **T1566 - Phishing:** Mailbox scans can reveal if the brute force was preceded or followed by phishing attempts.
+*   **NIST Incident Response Alignment:**
+    *   **Eradication:** Initiating scans is a critical step towards identifying elements that need to be removed during eradication.
+*   **SOC SOPs:** Aligns with 'Malware Scan Activation' and 'Persistence Mechanism Identification' procedures.
+*   **Inputs:** Compromised username, user's primary device ID, user's email address, EDR platform API, ESG platform API.
+*   **Outputs:** Status of endpoint scan initiation, status of mailbox scan initiation, and unique IDs for the initiated scans.
+*   **Failure Handling:** If the automated initiation of scans fails (e.g., EDR/ESG API issues, device offline), the failure is logged, and an L2 analyst is notified. The analyst will then need to manually trigger scans or investigate why they couldn't be initiated.
+*   **SLA Impact:** Medium. While not immediate containment, successful execution of this block is crucial for a complete eradication and recovery. Delays prolong the time until the environment is confirmed clean and secure.
+
+---
+
+#### Block: Communicate_with_User_and_Gather_Context
+
+*   **Description:** This block sends an automated, templated notification to the compromised user (via a secure, pre-defined channel like an internal chat system or an alternative email address if the primary is compromised). The communication informs the user about the incident, instructs them to change their password (if not already forced) and other immediate security actions, and requests any observations about unusual activity they may have noticed.
+*   **Purpose:** To inform the affected user, ensure their cooperation in recovery, and gather human intelligence that might not be available from automated systems.
+*   **MITRE ATT&CK Alignment:** (No direct ATT&CK alignment, as this is a communication and incident management activity.)
+*   **NIST Incident Response Alignment:**
+    *   **Recovery:** User communication is essential for the recovery phase, ensuring the user is part of the solution.
+*   **SOC SOPs:** Aligns with 'User Notification' and 'Incident Information Gathering' procedures.
+*   **Inputs:** Compromised username, user's contact email, containment timestamp, incident ID, preferred contact method.
+*   **Outputs:** Status of the communication, boolean indicating if user feedback was received, and user's confirmation of suspicious activity (if any).
+*   **Failure Handling:** If automated communication fails (e.g., invalid contact information), the failure is logged, and an L2 analyst is immediately notified to establish manual contact with the user or their manager.
+*   **SLA Impact:** Medium. Timely and clear communication prevents user frustration, ensures user participation in remediation, and provides valuable context. Delays can hinder recovery efforts.
+
+---
+
+#### Block: Incident_Management_Platform_Update_and_Handover
+
+*   **Description:** This final automated block aggregates all data collected and actions taken throughout the playbook's execution. It then updates the incident record in the central Incident Management Platform (IMP) with a summary of findings, automated actions, their outcomes, and sets the incident's priority. Finally, it assigns the incident to a human Level 2 (L2) analyst for a deeper investigation, review of scan results, and coordination of the full eradication and recovery process.
+*   **Purpose:** To ensure comprehensive documentation of the automated response, provide a clear audit trail, and facilitate a smooth transition for human analysts to continue the investigation and recovery.
+*   **MITRE ATT&CK Alignment:** (No direct ATT&CK alignment, as this is an administrative and incident management activity.)
+*   **NIST Incident Response Alignment:**
+    *   **Post-Incident Activity:** This block ensures proper documentation and prepares for lessons learned.
+    *   **Containment, Eradication, Recovery:** Facilitates the next stages by providing a consolidated view of the automated response.
+*   **SOC SOPs:** Completes the 'Automated Incident Documentation' and 'Escalation to Tier 2' procedures.
+*   **Inputs:** Incident ID, compromised username, source IP, overall validation status, containment timestamp, and all outputs from previous blocks.
+*   **Outputs:** Boolean indicating IMP update success, the assigned L2 analyst, and the incident's priority level.
+*   **Failure Handling:** If the IMP update fails, the failure is logged, and a human supervisor is immediately notified. Manual creation or update of the incident record in the IMP will be required, emphasizing the importance of accurate record-keeping.
+*   **SLA Impact:** Low. This block concludes the automated part. While not directly mitigating an active threat, timely and accurate documentation is crucial for efficient post-automation investigation, reporting, and long-term security posture improvement.

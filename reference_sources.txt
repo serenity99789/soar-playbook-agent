@@ -1,0 +1,10 @@
+CSA Singapore Incident Response Playbooks
+https://www.csa.gov.sg/resources/singcert/incident-response-playbooks
+
+NIST SP 800-61r2 – Computer Security Incident Handling Guide
+https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-61r2.pdf
+
+MITRE ATT&CK Framework
+https://attack.mitre.org/
+
+SOC Standard Operating Procedures (Generic Enterprise SOC)

@@ -1,0 +1,19 @@
+[CSA_IR_PLAYBOOKS]
+Domain: Incident Response
+Focus: Malware, Ransomware, Account Compromise, Phishing
+Authority: Government (Singapore CSA)
+
+[NIST_800_61]
+Domain: Incident Handling Lifecycle
+Focus: Detection, Analysis, Containment, Eradication, Recovery
+Authority: US NIST
+
+[MITRE_ATTACK]
+Domain: Adversary Tactics & Techniques
+Focus: TTP Mapping, Kill Chain, Threat Modeling
+Authority: MITRE
+
+[SOC_SOP]
+Domain: SOC Operations
+Focus: SLAs, Escalation, Analyst Workflow
+Authority: Enterprise SOC

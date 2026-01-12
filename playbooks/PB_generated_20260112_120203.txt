@@ -1,0 +1,299 @@
+SECTION A: BLOCKS_JSON
+```json
+[
+  {
+    "block_name": "Ingest_BruteForce_Alert",
+    "purpose": "To receive and normalize the initial alert indicating a successful brute force attack.",
+    "inputs": [
+      { "name": "raw_alert_data", "type": "string", "description": "Raw data from SIEM or security solution." }
+    ],
+    "outputs": [
+      { "name": "incident_id", "type": "string", "description": "Unique identifier for the incident." },
+      { "name": "affected_username", "type": "string", "description": "Username of the compromised account." },
+      { "name": "source_ip", "type": "string", "description": "IP address of the attacker." },
+      { "name": "event_timestamp", "type": "datetime", "description": "Timestamp of the successful brute force event." },
+      { "name": "service_impacted", "type": "string", "description": "Service or application where the brute force occurred." }
+    ],
+    "failure_handling": "If alert parsing fails or critical data is missing, escalate to a Tier 1 analyst for manual review and incident creation. The playbook will halt until manually intervened.",
+    "sla_impact": "High. This is the initial detection point. Delays directly impact the overall Mean Time To Detect (MTTD) and Mean Time To Respond (MTTR).",
+    "analyst_notes": "Verify the accuracy of parsed data, especially 'affected_username' and 'source_ip'. Confirm the alert is indeed a successful brute force and not a false positive or legitimate activity."
+  },
+  {
+    "block_name": "Gather_User_Context",
+    "purpose": "To collect comprehensive information about the affected user account from various identity and HR systems.",
+    "inputs": [
+      { "name": "affected_username", "type": "string", "description": "Username of the potentially compromised account." }
+    ],
+    "outputs": [
+      { "name": "user_email", "type": "string", "description": "Primary email address of the user." },
+      { "name": "user_department", "type": "string", "description": "Department the user belongs to." },
+      { "name": "user_manager", "type": "string", "description": "Manager of the affected user." },
+      { "name": "user_criticality_level", "type": "string", "description": "Assessed criticality of the user (e.g., VIP, Admin, Standard)." },
+      { "name": "recent_logins_details", "type": "json", "description": "List of recent login activities for the user (e.g., source IP, timestamp, device type) from the last 24 hours." },
+      { "name": "ad_groups", "type": "list", "description": "List of Active Directory or identity provider groups the user is a member of." }
+    ],
+    "failure_handling": "If user information cannot be retrieved from all sources, flag the missing data for manual collection by an analyst. The playbook will proceed with available information, but the analyst must be notified.",
+    "sla_impact": "Medium. While crucial for prioritization and scope, some containment actions can proceed without full context. However, delays can lead to ineffective response.",
+    "analyst_notes": "Pay close attention to 'user_criticality_level' and 'ad_groups' to identify high-value targets. Review 'recent_logins_details' for any activity immediately following the brute force event that differs from normal behavior."
+  },
+  {
+    "block_name": "Gather_Source_IP_Context",
+    "purpose": "To enrich the attacker's source IP address with threat intelligence and geographical information.",
+    "inputs": [
+      { "name": "source_ip", "type": "string", "description": "IP address of the attacker." }
+    ],
+    "outputs": [
+      { "name": "ip_geolocation", "type": "string", "description": "Geographical location (country, city) of the source IP." },
+      { "name": "ip_reputation_score", "type": "integer", "description": "Numerical threat reputation score (e.g., 0-100, higher is worse)." },
+      { "name": "threat_intel_matches", "type": "list", "description": "List of threat intelligence feeds identifying the IP as malicious, known VPN/Tor exit node, etc." },
+      { "name": "asn_info", "type": "string", "description": "Autonomous System Number (ASN) and associated organization." }
+    ],
+    "failure_handling": "If threat intelligence lookups fail, proceed with the playbook but flag the 'source_ip' for manual reputation check by an analyst. Assume the IP is malicious for immediate containment.",
+    "sla_impact": "Medium. Critical for assessing threat level and determining blocking strategy, but initial containment can still occur.",
+    "analyst_notes": "High 'ip_reputation_score' or matches in 'threat_intel_matches' (especially 'known VPN/Tor exit node') significantly increase confidence in malicious intent. Geolocation inconsistent with the user's usual location is a strong indicator."
+  },
+  {
+    "block_name": "Confirm_Compromise_Indicators",
+    "purpose": "To check for additional post-compromise activities that indicate the attacker gained deeper access or took further actions beyond the initial login.",
+    "inputs": [
+      { "name": "affected_username", "type": "string", "description": "Username of the potentially compromised account." },
+      { "name": "source_ip", "type": "string", "description": "Source IP identified in the brute force event." },
+      { "name": "event_timestamp", "type": "datetime", "description": "Timestamp of the successful brute force event." }
+    ],
+    "outputs": [
+      { "name": "unusual_login_attempts_detected", "type": "boolean", "description": "True if logins from unusual locations/devices detected post-compromise." },
+      { "name": "mailbox_rules_changed", "type": "boolean", "description": "True if email forwarding rules or new inbox rules were created." },
+      { "name": "cloud_resource_changes_detected", "type": "boolean", "description": "True if suspicious changes to cloud resources (e.g., new VMs, API keys) linked to the user were observed." },
+      { "name": "file_access_anomalies", "type": "boolean", "description": "True if unusual file access, downloads, or deletions were detected." },
+      { "name": "suspicious_endpoint_activity", "type": "boolean", "description": "True if suspicious processes or commands ran on user's endpoints." }
+    ],
+    "failure_handling": "If API calls to security tools (e.g., EDR, Cloud logs) fail, escalate to an analyst for manual log review. Assume compromise until proven otherwise, and proceed with containment.",
+    "sla_impact": "High. Determines the full scope and urgency of the response. Missing these indicators could lead to underestimating the incident's severity.",
+    "analyst_notes": "MITRE ATT&CK T1078 (Valid Accounts), T1114 (Email Collection), T1531 (Account Access Removal), T1070 (Defense Evasion - Indicator Removal). Review logs carefully for activity starting immediately after the 'event_timestamp'. Focus on behaviors outside the user's normal baseline."
+  },
+  {
+    "block_name": "Contain_Compromised_Account",
+    "purpose": "To immediately isolate the compromised user account and prevent further unauthorized access or activity.",
+    "inputs": [
+      { "name": "affected_username", "type": "string", "description": "Username of the compromised account." },
+      { "name": "user_email", "type": "string", "description": "Email address associated with the account." }
+    ],
+    "outputs": [
+      { "name": "account_disabled_status", "type": "boolean", "description": "True if account was successfully disabled." },
+      { "name": "password_reset_status", "type": "boolean", "description": "True if password was successfully reset." },
+      { "name": "force_logout_status", "type": "boolean", "description": "True if all active sessions were successfully terminated." }
+    ],
+    "failure_handling": "Alert a Tier 2 analyst immediately if any account action (disable, password reset, force logout) fails. The analyst must perform these actions manually and investigate the failure.",
+    "sla_impact": "Critical. This is a primary containment action. Delays directly risk further damage, data exfiltration, or lateral movement within the network.",
+    "analyst_notes": "NIST Incident Response Step 3: Containment. MITRE ATT&CK T1531 (Account Access Removal). Ensure all three actions (disable, reset, force logout) are performed. Document exact timestamps and results of each action for audit purposes. Prepare to communicate this action to the user and their manager."
+  },
+  {
+    "block_name": "Block_Malicious_IP",
+    "purpose": "To block the identified malicious source IP address at various network and endpoint security controls to prevent further attacks.",
+    "inputs": [
+      { "name": "source_ip", "type": "string", "description": "IP address of the attacker." },
+      { "name": "threat_intel_matches", "type": "list", "description": "Threat intelligence matches associated with the IP." }
+    ],
+    "outputs": [
+      { "name": "firewall_block_status", "type": "boolean", "description": "True if IP was successfully blocked at the network firewall." },
+      { "name": "edr_block_status", "type": "boolean", "description": "True if IP was successfully blocked at EDR/endpoint level (if applicable)." },
+      { "name": "waff_block_status", "type": "boolean", "description": "True if IP was successfully blocked at the Web Application Firewall (WAF) (if applicable)." }
+    ],
+    "failure_handling": "Alert a Tier 2 analyst if IP blocking fails on any device. The analyst must manually configure blocks and investigate the failure. If the IP is a critical cloud provider, consider a more granular block.",
+    "sla_impact": "High. Prevents potential further attacks from the same source IP against other systems or users. Delays could lead to expanded compromise.",
+    "analyst_notes": "NIST Incident Response Step 3: Containment. Evaluate the scope of the block (temporary vs. permanent). Be cautious when blocking IPs from major cloud providers or CDNs, as this could impact legitimate traffic. Consider blocking at multiple layers (network, application, endpoint)."
+  },
+  {
+    "block_name": "Initiate_Forensic_Investigation",
+    "purpose": "To formally trigger a deeper manual investigation by a dedicated incident response or forensic team to determine the full scope, root cause, and attacker tactics, techniques, and procedures (TTPs).",
+    "inputs": [
+      { "name": "incident_id", "type": "string", "description": "Unique identifier for the incident." },
+      { "name": "affected_username", "type": "string", "description": "Username of the compromised account." },
+      { "name": "source_ip", "type": "string", "description": "Source IP of the attack." },
+      { "name": "unusual_login_attempts_detected", "type": "boolean", "description": "Output from 'Confirm_Compromise_Indicators'." },
+      { "name": "mailbox_rules_changed", "type": "boolean", "description": "Output from 'Confirm_Compromise_Indicators'." },
+      { "name": "cloud_resource_changes_detected", "type": "boolean", "description": "Output from 'Confirm_Compromise_Indicators'." },
+      { "name": "file_access_anomalies", "type": "boolean", "description": "Output from 'Confirm_Compromise_Indicators'." }
+    ],
+    "outputs": [
+      { "name": "forensic_case_id", "type": "string", "description": "Identifier for the created forensic investigation case/ticket." },
+      { "name": "investigation_status", "type": "string", "description": "Current status of the forensic investigation (e.g., 'Pending', 'InProgress')." }
+    ],
+    "failure_handling": "If integration with the forensic case management system fails, create a high-priority alert/ticket for a Tier 2 analyst to manually create the forensic case.",
+    "sla_impact": "Medium. While crucial for complete resolution and learning, initial containment has already occurred. Delays here prolong the overall resolution and recovery phases.",
+    "analyst_notes": "NIST Incident Response Step 4: Eradication & Recovery. This block typically transitions the incident from automated response to a human-led deep dive. Provide all collected context to the forensic team. Emphasize the potential ATT&CK TTPs identified in 'Confirm_Compromise_Indicators'."
+  },
+  {
+    "block_name": "Notify_Stakeholders",
+    "purpose": "To inform relevant internal stakeholders about the incident, its current status, and actions taken.",
+    "inputs": [
+      { "name": "incident_id", "type": "string", "description": "Unique identifier for the incident." },
+      { "name": "affected_username", "type": "string", "description": "Username of the compromised account." },
+      { "name": "user_manager", "type": "string", "description": "Manager of the affected user." },
+      { "name": "user_department", "type": "string", "description": "Department of the affected user." },
+      { "name": "account_disabled_status", "type": "boolean", "description": "Output from 'Contain_Compromised_Account'." },
+      { "name": "password_reset_status", "type": "boolean", "description": "Output from 'Contain_Compromised_Account'." },
+      { "name": "forensic_case_id", "type": "string", "description": "Output from 'Initiate_Forensic_Investigation'." }
+    ],
+    "outputs": [
+      { "name": "notification_status", "type": "json", "description": "Status of notifications sent to various groups (e.g., 'IR_Team_Notified', 'UserManager_Notified', 'User_Notified')." }
+    ],
+    "failure_handling": "Alert a Tier 1 analyst if notification delivery fails to any stakeholder. The analyst must send manual notifications via alternative channels.",
+    "sla_impact": "Low. Primarily for communication and compliance. Does not directly mitigate the active threat but is vital for organizational awareness and coordination.",
+    "analyst_notes": "Ensure communications are tailored to the audience (e.g., technical details for the IR team, high-level impact and required actions for the manager). Adhere to the organization's incident communication plan. The user should be informed of the password reset and provided instructions."
+  },
+  {
+    "block_name": "Generate_Incident_Report",
+    "purpose": "To compile all incident details, actions taken, findings, and recommendations into a structured incident report.",
+    "inputs": [
+      { "name": "incident_id", "type": "string", "description": "Unique identifier for the incident." },
+      { "name": "all_collected_context", "type": "json", "description": "Consolidated data from all previous blocks." },
+      { "name": "investigation_results", "type": "string", "description": "Summary of findings from the forensic investigation (expected to be updated manually or by subsequent blocks once available)." }
+    ],
+    "outputs": [
+      { "name": "incident_report_url", "type": "string", "description": "URL or path to the generated incident report." },
+      { "name": "report_generation_status", "type": "boolean", "description": "True if the report was successfully generated." }
+    ],
+    "failure_handling": "Alert a Tier 1 analyst to manually compile the incident report if automated generation fails. Provide all available data to aid manual creation.",
+    "sla_impact": "Low. Primarily a post-incident activity for compliance, audit, and lessons learned. Does not affect active threat mitigation.",
+    "analyst_notes": "NIST Incident Response Step 5: Post-Incident Activity. Ensure the report includes a timeline of events, actions taken, identified TTPs (MITRE ATT&CK), impact assessment, root cause, and recommendations for future prevention. This report is critical for audit trails and continuous improvement."
+  },
+  {
+    "block_name": "Close_Incident",
+    "purpose": "To formally close the incident in the incident response platform and update its status.",
+    "inputs": [
+      { "name": "incident_id", "type": "string", "description": "Unique identifier for the incident." },
+      { "name": "incident_report_url", "type": "string", "description": "URL to the final incident report." },
+      { "name": "resolution_summary", "type": "string", "description": "A brief summary of how the incident was resolved." }
+    ],
+    "outputs": [
+      { "name": "incident_closed_status", "type": "boolean", "description": "True if the incident was successfully closed." }
+    ],
+    "failure_handling": "Alert a Tier 1 analyst to manually close the incident in the IR platform if automated closure fails.",
+    "sla_impact": "Low. An administrative step following incident resolution. Does not impact active threat mitigation.",
+    "analyst_notes": "NIST Incident Response Step 5: Post-Incident Activity. Before closing, ensure all containment, eradication, and recovery steps are confirmed, the incident report is finalized, and any outstanding tasks (e.g., user education, system hardening) are tracked for completion."
+  }
+]
+```
+
+SECTION B: DOCUMENTATION_TEXT
+
+**SOAR Playbook Blocks Documentation: Account Compromise – Brute Force Success**
+
+This playbook automates the initial response to a confirmed successful brute force attack leading to account compromise. It focuses on rapid containment, context gathering, and initiating deeper investigation, aligning with NIST Incident Response phases and leveraging MITRE ATT&CK for threat understanding.
+
+---
+
+### **Block 1: Ingest_BruteForce_Alert**
+
+*   **Purpose:** This block serves as the entry point for the playbook. Its primary function is to ingest and normalize raw alert data from security tools (e.g., SIEM, Identity Protection) that signal a successful brute force attack against an account. It extracts critical initial parameters required for subsequent playbook execution.
+*   **Alignments:**
+    *   **NIST Incident Response:** Preparation (establishing detection capabilities), Detection & Analysis (initial alert validation and parsing).
+    *   **SOC SOPs:** Initial Alert Triage, Incident Creation.
+*   **Analyst Guidance:** Upon execution, an analyst should confirm the integrity and accuracy of the parsed `affected_username` and `source_ip`. This is a critical validation step to prevent false positives and ensure the playbook targets the correct entity. If data is incomplete or corrupted, manual incident creation and data entry are required.
+*   **MITRE ATT&CK Relevance:** N/A (Core SOAR function, not a specific ATT&CK technique).
+
+---
+
+### **Block 2: Gather_User_Context**
+
+*   **Purpose:** To quickly collect essential contextual information about the `affected_username` from various organizational data sources (e.g., Active Directory, HR systems, identity providers). This context is vital for assessing the criticality of the compromised account and prioritizing response actions.
+*   **Alignments:**
+    *   **NIST Incident Response:** Detection & Analysis (gathering additional data to understand impact).
+    *   **SOC SOPs:** Incident Prioritization, Information Gathering.
+*   **Analyst Guidance:** Analysts should review the `user_criticality_level` and associated `ad_groups` to determine if the compromised account holds elevated privileges or access to sensitive data. Special attention should be given to `recent_logins_details` to identify any unusual activity immediately following the brute force event, potentially indicating attacker presence.
+*   **MITRE ATT&CK Relevance:** N/A (Context gathering for various ATT&CK techniques, helps in understanding potential impact of T1078 Valid Accounts).
+
+---
+
+### **Block 3: Gather_Source_IP_Context**
+
+*   **Purpose:** This block enriches the `source_ip` identified in the brute force alert with external threat intelligence and geographical data. This helps in understanding the nature of the threat actor and informs subsequent containment strategies.
+*   **Alignments:**
+    *   **NIST Incident Response:** Detection & Analysis (identifying indicators, understanding threat source).
+    *   **SOC SOPs:** Threat Intelligence Integration, Malicious IP Identification.
+*   **Analyst Guidance:** High `ip_reputation_score` values, or identification of the IP as a known VPN/Tor exit node, are strong indicators of malicious intent. Analysts should evaluate `ip_geolocation` against the affected user's typical login locations to identify geographical anomalies. If `threat_intel_matches` are extensive, it increases confidence in blocking.
+*   **MITRE ATT&CK Relevance:** Directly supports understanding the adversary's infrastructure (T1071.001 - Application Layer Protocol: Web Protocols if web-based, general C2 implications). Helps identify T1595.002 (Active Scanning - Vulnerability Scanning).
+
+---
+
+### **Block 4: Confirm_Compromise_Indicators**
+
+*   **Purpose:** To actively search for signs of post-compromise activity, beyond just the successful login. This block interrogates various security tools (e.g., EDR, Cloud Security Posture Management, Email Security Gateways) for indicators that the attacker has performed further actions after gaining initial access.
+*   **Alignments:**
+    *   **NIST Incident Response:** Detection & Analysis (correlating information, confirming scope).
+    *   **SOC SOPs:** Advanced Threat Hunting, Compromise Assessment.
+*   **Analyst Guidance:** This is a crucial validation step. If any of the output flags (`unusual_login_attempts_detected`, `mailbox_rules_changed`, `cloud_resource_changes_detected`, `file_access_anomalies`, `suspicious_endpoint_activity`) are true, it strongly confirms an active attacker and necessitates immediate, aggressive containment. Analysts should review the underlying logs for context.
+*   **MITRE ATT&CK Relevance:**
+    *   T1078 (Valid Accounts): Initial Access via successful brute force.
+    *   T1114 (Email Collection): `mailbox_rules_changed` indicates collection attempts.
+    *   T1531 (Account Access Removal): If attacker attempts to disable other accounts.
+    *   T1552 (Unsecured Credentials): If the attacker uses the compromised account to dump credentials.
+    *   T1070.004 (Indicator Removal on Host: File Deletion): If `file_access_anomalies` include deletions.
+    *   T1059 (Command and Scripting Interpreter): `suspicious_endpoint_activity` might involve this.
+
+---
+
+### **Block 5: Contain_Compromised_Account**
+
+*   **Purpose:** This block executes immediate, critical containment actions to neutralize the threat associated with the compromised account. It focuses on preventing any further unauthorized activity by the attacker.
+*   **Alignments:**
+    *   **NIST Incident Response:** Containment (stopping the incident, preventing further damage).
+    *   **SOC SOPs:** Account Remediation, Emergency User Lockout.
+*   **Analyst Guidance:** This block is high priority. Analysts must verify that all three actions (`account_disabled_status`, `password_reset_status`, `force_logout_status`) are successful. If any fail, immediate manual intervention is required. Prompt communication with the user and their manager about the password reset and account lockout is essential.
+*   **MITRE ATT&CK Relevance:** T1531 (Account Access Removal): This block directly counters this technique by regaining control of the account. T1078 (Valid Accounts): Prevents further use of valid credentials.
+
+---
+
+### **Block 6: Block_Malicious_IP**
+
+*   **Purpose:** To prevent the identified `source_ip` from causing further harm to the organization's network or systems. This is a network-level containment action.
+*   **Alignments:**
+    *   **NIST Incident Response:** Containment (isolating malicious entities).
+    *   **SOC SOPs:** Network Blocking, Threat Actor Isolation.
+*   **Analyst Guidance:** Analysts should evaluate the scope of the block (e.g., temporary vs. permanent). If the `source_ip` belongs to a known cloud provider or legitimate service, a more granular block (e.g., specific ports, application-layer blocking via WAF) might be necessary to avoid collateral damage. Verification that the block is active on all intended devices is crucial.
+*   **MITRE ATT&CK Relevance:** T1568 (Compromise via Supply Chain): If the source IP is part of a wider campaign. T1071 (Application Layer Protocol): Blocking at network level disrupts C2.
+
+---
+
+### **Block 7: Initiate_Forensic_Investigation**
+
+*   **Purpose:** This block triggers the transition from automated playbook response to a human-led deep dive investigation. It creates a formal case for forensic analysis to understand the full extent of the compromise, root cause, and attacker TTPs.
+*   **Alignments:**
+    *   **NIST Incident Response:** Eradication & Recovery (planning deeper investigation, identifying root cause).
+    *   **SOC SOPs:** Incident Escalation, Forensic Case Management.
+*   **Analyst Guidance:** This block ensures that all initial context gathered by the playbook is seamlessly handed over to the forensic team. Analysts should confirm the `forensic_case_id` is created and the incident's status reflects `investigation_status` as pending or in progress. This step is critical for long-term remediation and preventing recurrence.
+*   **MITRE ATT&CK Relevance:** This block supports the comprehensive analysis of all ATT&CK phases (Initial Access, Execution, Persistence, Privilege Escalation, Defense Evasion, Credential Access, Discovery, Lateral Movement, Collection, Exfiltration, Impact) to map the attacker's full kill chain.
+
+---
+
+### **Block 8: Notify_Stakeholders**
+
+*   **Purpose:** To ensure timely and appropriate communication to relevant internal stakeholders about the incident, its current status, and the actions taken. This includes the affected user, their manager, and the broader Incident Response Team.
+*   **Alignments:**
+    *   **NIST Incident Response:** Communication (internal and external reporting).
+    *   **SOC SOPs:** Incident Communication Plan, Stakeholder Management.
+*   **Analyst Guidance:** Analysts should ensure that the messaging is tailored to each audience. The user needs clear instructions on password reset and security best practices. The manager needs an understanding of the impact and any necessary actions for their team member. The IR team needs a summary for awareness and coordination. Verify successful delivery of all notifications.
+*   **MITRE ATT&CK Relevance:** N/A (Core SOAR function, communication).
+
+---
+
+### **Block 9: Generate_Incident_Report**
+
+*   **Purpose:** To compile all incident-related information, including findings, actions taken, and recommendations, into a structured and comprehensive incident report. This report is essential for post-incident analysis, audit, and continuous improvement.
+*   **Alignments:**
+    *   **NIST Incident Response:** Post-Incident Activity (documentation, lessons learned).
+    *   **SOC SOPs:** Incident Reporting, Audit Trail Maintenance.
+*   **Analyst Guidance:** Analysts should verify that the generated report is complete and accurately reflects all incident details, including timelines, evidence, identified MITRE ATT&CK TTPs, and remediation steps. This report is a crucial document for legal, compliance, and strategic security reviews.
+*   **MITRE ATT&CK Relevance:** N/A (Documentation of all ATT&CK techniques used in the incident).
+
+---
+
+### **Block 10: Close_Incident**
+
+*   **Purpose:** To formally conclude the incident within the incident response platform, marking it as resolved after all necessary actions and documentation are completed.
+*   **Alignments:**
+    *   **NIST Incident Response:** Post-Incident Activity (reviewing and closing).
+    *   **SOC SOPs:** Incident Closure Procedures.
+*   **Analyst Guidance:** Before closing, analysts must confirm that all containment, eradication, and recovery steps have been successfully implemented and verified. The final incident report must be attached or linked, and any follow-up actions (e.g., user security awareness training, system hardening) should be documented as separate tasks.
+*   **MITRE ATT&CK Relevance:** N/A (Administrative closure).

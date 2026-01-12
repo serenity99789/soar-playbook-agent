@@ -1,0 +1,38 @@
+AUTHORITATIVE REFERENCE SOURCES FOR SOAR PLAYBOOK GENERATION
+
+1. NIST SP 800-61r2 – Computer Security Incident Handling Guide
+   - Defines incident response lifecycle:
+     Preparation
+     Detection & Analysis
+     Containment
+     Eradication
+     Recovery
+     Post-Incident Activity
+   - Emphasizes evidence preservation, escalation paths, and documentation.
+
+2. MITRE ATT&CK Framework
+   - Used for mapping adversary tactics and techniques.
+   - Supports detection logic, enrichment, and response alignment.
+   - Common tactics include:
+     Initial Access
+     Credential Access
+     Lateral Movement
+     Command and Control
+     Impact
+
+3. CSA Singapore Incident Response Playbooks
+   - Provides practical, real-world response workflows.
+   - Covers malware, phishing, ransomware, account compromise.
+   - Emphasizes decision points and analyst validation steps.
+
+4. Enterprise SOC Standard Operating Procedures
+   - Tiered analyst handling (L1 / L2 / L3).
+   - SLA-driven escalation.
+   - Clear handoffs between automation and human review.
+
+The SOAR agent must use these references to guide:
+- Block design
+- Decision logic
+- Analyst notes
+- Failure handling
+- SLA considerations

@@ -1,0 +1,227 @@
+SECTION A: BLOCKS_JSON
+```json
+[
+  {
+    "block_name": "Ingest & Enrich Alert",
+    "purpose": "Automatically parse the raw security alert from the SIEM/log source, extract key entities such as the source IP address and target user account, and enrich them with critical contextual information (e.g., IP geolocation, IP reputation, user details like department and criticality). This provides a foundational understanding of the alert for subsequent analysis.",
+    "inputs": [
+      "raw_alert_data"
+    ],
+    "outputs": [
+      "alert_id",
+      "alert_source",
+      "alert_time",
+      "source_ip",
+      "target_account",
+      "ip_geo_country",
+      "ip_geo_city",
+      "ip_reputation_score",
+      "ip_reputation_details",
+      "user_department",
+      "user_manager_email",
+      "user_criticality_level",
+      "account_type"
+    ],
+    "failure_handling": "If core entities (source IP, target account) cannot be extracted, the alert is marked as 'Unprocessable' and escalated to an analyst for manual review. If enrichment services fail (e.g., IP geolocation, reputation), log the failure, and proceed with available data, flagging missing enrichment for analyst attention. SLAs for initial alert processing may be impacted.",
+    "sla_impact": "Low. This is the initial data gathering phase. Delays in this block can slightly increase overall MTTR by deferring subsequent processing but do not immediately impact active threat containment.",
+    "analyst_notes": "Analysts should review the extracted and enriched data for accuracy. Pay particular attention to any 'unknown' or 'failed' enrichment values, which may indicate data source issues or require manual lookup. High IP reputation scores (indicating maliciousness) should raise immediate red flags."
+  },
+  {
+    "block_name": "Analyze Login Pattern",
+    "purpose": "Query identity provider logs (e.g., Active Directory, Okta, Azure AD) or the SIEM to confirm the specific attack pattern: multiple failed login attempts from the 'source_ip' immediately followed by a successful login for the 'target_account' within a defined time window. This confirms the 'brute force success' nature of the incident.",
+    "inputs": [
+      "source_ip",
+      "target_account",
+      "alert_time",
+      "lookback_period_minutes"
+    ],
+    "outputs": [
+      "brute_force_confirmed",
+      "failed_login_count",
+      "successful_login_timestamp",
+      "successful_login_event_id",
+      "login_event_details"
+    ],
+    "failure_handling": "If log query fails or no login events are retrieved, set 'brute_force_confirmed' to 'Unknown' and escalate to an analyst for manual log review. If the pattern is not found, the playbook may branch to 'False Positive' or a different incident type, requiring analyst verification.",
+    "sla_impact": "Medium. This block directly validates the incident type. Failure or delay here can lead to misclassification or delayed progression to containment, indirectly increasing MTTR.",
+    "analyst_notes": "If 'brute_force_confirmed' is 'Unknown', manually verify login patterns in the SIEM. Confirm the time window for failed attempts is appropriate for the environment. Note any successful logins that occurred *before* the brute force attempts as this could indicate a different attack vector."
+  },
+  {
+    "block_name": "Evaluate Login Anomaly",
+    "purpose": "Assess the legitimacy of the successful login by comparing its attributes (source IP, geolocation, time of day) against the user's historical login patterns and organizational security policies. This helps determine if the successful login is legitimate, even if it followed a brute force attempt, and checks for MFA usage.",
+    "inputs": [
+      "target_account",
+      "source_ip",
+      "ip_geo_country",
+      "successful_login_timestamp",
+      "user_criticality_level"
+    ],
+    "outputs": [
+      "login_anomalous",
+      "anomaly_details",
+      "mfa_used_for_success",
+      "account_current_status",
+      "user_typical_locations",
+      "user_typical_times"
+    ],
+    "failure_handling": "If historical data lookup fails or is unavailable, set 'login_anomalous' to 'Unknown' and flag for analyst review. If MFA status cannot be determined, assume 'Unknown'. Proceed to user verification with a higher level of suspicion.",
+    "sla_impact": "Medium. This block provides critical context for the incident's severity and guides subsequent actions. Delays can lead to incorrect prioritization or unnecessary actions.",
+    "analyst_notes": "A 'false' result for 'login_anomalous' doesn't automatically mean benign; contextual factors (e.g., remote work from a new location) must be considered. Investigate if 'mfa_used_for_success' is true, as this could indicate an MFA bypass, which is a critical finding."
+  },
+  {
+    "block_name": "User Verification & Confirmation",
+    "purpose": "Attempt to verify the legitimacy of the successful login directly with the 'target_account' user through a secure, out-of-band communication channel (e.g., internal chat, phone call, secure email notification). If direct automation isn't possible, a task is created for an analyst to perform manual verification.",
+    "inputs": [
+      "target_account",
+      "user_manager_email",
+      "successful_login_timestamp",
+      "source_ip",
+      "ip_geo_country",
+      "anomaly_details",
+      "brute_force_confirmed"
+    ],
+    "outputs": [
+      "user_confirmed_compromise",
+      "user_response_details",
+      "verification_status"
+    ],
+    "failure_handling": "If the user cannot be reached or does not respond within a configured timeout, 'user_confirmed_compromise' is set to 'Unknown', and the incident is escalated for immediate analyst review and manual contact attempts. If the communication channel fails, log the error and create a manual task.",
+    "sla_impact": "High. Direct user confirmation is often the quickest path to confirming compromise. Delays directly prolong potential unauthorized access and increase MTTR.",
+    "analyst_notes": "Always use secure, out-of-band communication channels for user verification to prevent an attacker from intercepting. If 'user_confirmed_compromise' is 'Unknown' after automation, the analyst *must* prioritize manual verification. Consider simultaneously notifying the user's manager for critical accounts."
+  },
+  {
+    "block_name": "Containment Actions",
+    "purpose": "Immediately limit the damage and prevent further unauthorized activity based on the confirmed compromise status. Actions include forcing a password reset for the 'target_account', terminating all active sessions, and blocking the 'source_ip' at the perimeter firewall/proxy. If confidence in compromise is very high, temporary account disablement may also be executed.",
+    "inputs": [
+      "target_account",
+      "source_ip",
+      "user_confirmed_compromise",
+      "user_criticality_level",
+      "mfa_used_for_success"
+    ],
+    "outputs": [
+      "password_reset_status",
+      "sessions_terminated_status",
+      "ip_blocked_status",
+      "account_disabled_status",
+      "containment_summary"
+    ],
+    "failure_handling": "Individual action failures are logged. If a critical action (e.g., password reset, session termination) fails, retry if possible or escalate immediately to an analyst for manual intervention. Proceed with other successful actions. Note that failure to contain impacts MTTR and potential damage significantly.",
+    "sla_impact": "Critical. This block directly stops the adversary's immediate access. Failures here have the highest impact on MTTR and potential business damage.",
+    "analyst_notes": "Review the success status of all containment actions. If 'user_confirmed_compromise' is 'false' or 'unknown' but other indicators are strong, the analyst may still choose to initiate containment (e.g., password reset) as a precautionary measure. IPs should be blocked temporarily initially, pending further investigation and threat intelligence review for permanent blocking. If MFA was bypassed, investigate the MFA system immediately."
+  },
+  {
+    "block_name": "Incident Creation & Reporting",
+    "purpose": "Create a formal security incident ticket in the ITSM or case management system, populating it with all collected information, analysis findings, and actions taken during the playbook execution. Notify relevant stakeholders (e.g., user's manager, IT support, executive teams for critical users) to ensure awareness and facilitate further investigation and recovery efforts.",
+    "inputs": [
+      "alert_id",
+      "target_account",
+      "source_ip",
+      "brute_force_confirmed",
+      "login_anomalous",
+      "user_confirmed_compromise",
+      "containment_summary",
+      "all_output_data_from_previous_blocks"
+    ],
+    "outputs": [
+      "incident_id",
+      "incident_url",
+      "stakeholder_notification_status"
+    ],
+    "failure_handling": "If incident creation fails, escalate as a critical error and instruct the analyst to manually create a ticket. Log notification failures and attempt retries. A failed incident creation impacts compliance and post-incident review but not immediate containment.",
+    "sla_impact": "Low to Medium. While critical for documentation, compliance, and follow-up, immediate operational impact is lower than containment. Delays primarily affect record-keeping and stakeholder communication.",
+    "analyst_notes": "Ensure all relevant details (timeline, evidence, actions, impact, user response) are accurately captured in the incident ticket. Verify that notifications were sent to the correct parties. Prioritize follow-up activities based on 'user_criticality_level' and the confirmed compromise status."
+  }
+]
+```
+
+SECTION B: DOCUMENTATION_TEXT
+
+### SOAR Playbook Documentation: Account Compromise – Brute Force Success
+
+**Use Case:** Multiple failed login attempts from a single IP, followed by a successful authentication.
+
+---
+
+#### **Block 1: Ingest & Enrich Alert**
+
+*   **Purpose:** This foundational block automatically ingests the raw security alert (e.g., from SIEM, identity provider logs) and performs initial data extraction and enrichment. It identifies key entities like the source IP address and the target user account, then enriches them with vital contextual information such as IP geolocation, IP reputation, and details about the user (e.g., department, manager, criticality level). This comprehensive initial data provides the basis for all subsequent analysis and decision-making within the playbook.
+*   **Alignment:**
+    *   **NIST Incident Response:** Primarily aligns with **Detection and Analysis** (NIST IR 3.1: Data Gathering, 3.2: Alert Triage).
+    *   **MITRE ATT&CK:** Helps identify indicators related to **Initial Access (T1078 - Valid Accounts)** and **Reconnaissance (T1592 - Gather Victim Host Information)** if IP reputation is malicious.
+    *   **SOC SOPs:** Adheres to standard operating procedures for initial alert processing, data normalization, and enrichment, ensuring a consistent starting point for all investigations.
+*   **Analyst Notes:**
+    *   Verify the accuracy of all extracted and enriched data. Inaccurate initial data can lead to incorrect decisions later in the playbook.
+    *   Pay close attention to any 'unknown' or 'failed' enrichment values, as these may indicate issues with data sources or require manual research (e.g., looking up an IP manually if the reputation service failed).
+    *   High IP reputation scores (indicating known malicious IP addresses) should immediately elevate the incident's priority.
+
+---
+
+#### **Block 2: Analyze Login Pattern**
+
+*   **Purpose:** This block is specifically designed to confirm the "Brute Force Success" pattern. It queries relevant identity provider logs (e.g., Active Directory, Okta, Azure AD) or the SIEM to identify a sequence of multiple failed login attempts from the 'source_ip' that immediately precede a successful login for the 'target_account' within a defined, short time window (e.g., 5-15 minutes). This step validates the core nature of the incident.
+*   **Alignment:**
+    *   **NIST Incident Response:** Aligns with **Detection and Analysis** (NIST IR 3.3: Incident Prioritization, 3.4: Incident Notification, 3.5: Incident Documentation).
+    *   **MITRE ATT&CK:** Directly identifies **Credential Access (T1110 - Brute Force)**, specifically **T1110.001 (Password Guessing)**.
+    *   **SOC SOPs:** Follows procedures for pattern matching and incident type classification based on observed event sequences, crucial for consistent incident handling.
+*   **Analyst Notes:**
+    *   If `brute_force_confirmed` is 'Unknown', the analyst *must* manually review raw login events in the SIEM or identity provider logs to confirm or deny the pattern.
+    *   Consider adjusting the `lookback_period_minutes` based on organizational typical brute force attempt durations or specific log source limitations.
+    *   If a successful login is observed *before* the brute force attempts, it might indicate a more complex attack or a pre-existing compromise, warranting broader investigation.
+
+---
+
+#### **Block 3: Evaluate Login Anomaly**
+
+*   **Purpose:** This block critically assesses whether the successful login, despite following a brute force attempt, exhibits anomalous characteristics. It compares the login's attributes (e.g., source IP, geolocation, time of day) against the user's historical login patterns and any relevant organizational security policies (e.g., geographic restrictions, time-based access). It also checks if Multi-Factor Authentication (MFA) was successfully used for the login. This provides crucial context regarding the severity and authenticity of the successful login.
+*   **Alignment:**
+    *   **NIST Incident Response:** Part of **Detection and Analysis** (NIST IR 3.2: Incident Validation, 3.3: Incident Prioritization).
+    *   **MITRE ATT&CK:** Supports detection of **Defense Evasion (T1078 - Valid Accounts)** if an attacker bypassed security controls (like MFA) or logged in from unusual locations.
+    *   **SOC SOPs:** Incorporates procedures for behavioral analytics and policy enforcement checks, enhancing the context-rich analysis phase.
+*   **Analyst Notes:**
+    *   A 'false' result for `login_anomalous` does not automatically mean the login is legitimate. It simply indicates it falls within typical user behavior. Other factors (e.g., malicious IP reputation) must still be weighed.
+    *   If `mfa_used_for_success` is 'True' *after* a brute force attempt, this is a critical finding that could indicate an MFA bypass technique (e.g., phishing, token theft) and warrants immediate, deeper investigation into the MFA system itself.
+    *   Review `anomaly_details` to understand the specific flags raised (e.g., 'New GEO', 'Unusual Time', 'New ISP').
+
+---
+
+#### **Block 4: User Verification & Confirmation**
+
+*   **Purpose:** This block initiates direct communication with the 'target_account' user through a secure, out-of-band communication channel (e.g., internal chat, phone call, secure system notification). The goal is to verify if they legitimately performed the successful login from the specified location/time. If full automation is not possible or a response is not received within a timeout, a task is created for a security analyst to manually perform this verification.
+*   **Alignment:**
+    *   **NIST Incident Response:** Crucial for **Detection and Analysis** (NIST IR 3.2: Incident Validation) and informing subsequent **Containment** decisions.
+    *   **MITRE ATT&CK:** Helps confirm potential **Initial Access (T1078 - Valid Accounts)** by an adversary through a direct user interaction.
+    *   **SOC SOPs:** Emphasizes secure communication practices for sensitive inquiries and outlines escalation paths for unconfirmed incidents, reducing false positives for critical actions.
+*   **Analyst Notes:**
+    *   **CRITICAL:** Always use secure, out-of-band communication channels for user verification. Never use email or messaging platforms that could be compromised if the account is already breached.
+    *   If `user_confirmed_compromise` is 'Unknown' after automation, the analyst *must* immediately prioritize manual verification to avoid unnecessary containment actions or, conversely, to confirm a live compromise.
+    *   For critical users, consider simultaneously notifying the user's manager to assist in the verification process or provide additional context.
+
+---
+
+#### **Block 5: Containment Actions**
+
+*   **Purpose:** This block executes immediate, decisive actions to limit the damage and prevent further unauthorized activity. Based on the `user_confirmed_compromise` status and other indicators, the playbook will initiate a forced password reset for the `target_account`, terminate all active sessions for that account, and block the `source_ip` at the perimeter firewall or proxy. For high-confidence compromises, temporary account disablement may also be executed. These actions are paramount to stopping the adversary's access.
+*   **Alignment:**
+    *   **NIST Incident Response:** Directly aligns with the **Containment, Eradication, and Recovery** phase (NIST IR 3.6: Containment Strategy, 3.7: Eradication and Recovery).
+    *   **MITRE ATT&CK:** Directly disrupts adversary techniques under **Initial Access (T1078 - Valid Accounts)** and **Credential Access (T1110 - Brute Force)** by revoking access. Also mitigates potential **Persistence (T1136 - Create Account)** by changing credentials.
+    *   **SOC SOPs:** Follows established procedures for immediate incident response, threat isolation, and damage control. Specifies the sequence and priority of containment actions.
+*   **Analyst Notes:**
+    *   Review the success status of all containment actions. If a critical action (e.g., password reset) fails, the analyst *must* immediately intervene to perform it manually.
+    *   Even if `user_confirmed_compromise` is 'false' or 'unknown' but other indicators (e.g., malicious IP, extreme anomaly) are strong, the analyst may decide to proceed with some containment actions (e.g., password reset, session termination) as a precaution.
+    *   IP blocks should initially be temporary. Analysts should review the IP reputation and nature of the threat to determine if a permanent block is warranted.
+    *   If an MFA bypass was suspected (from Block 3), escalate to an identity and access management team to investigate the MFA system's integrity.
+
+---
+
+#### **Block 6: Incident Creation & Reporting**
+
+*   **Purpose:** This final block formalizes the incident by creating a comprehensive security incident ticket in the designated ITSM or case management system. The ticket is populated with all collected evidence, analysis findings, and the detailed actions taken throughout the playbook execution. Concurrently, relevant stakeholders (e.g., the user's manager, IT support teams, executive leadership for critical accounts) are notified to ensure awareness, facilitate any necessary post-incident activities, and meet reporting requirements.
+*   **Alignment:**
+    *   **NIST Incident Response:** Addresses **Detection and Analysis** (NIST IR 3.5: Incident Documentation, 3.4: Incident Notification) and initiates **Post-Incident Activity** (NIST IR 4.1: Lessons Learned, 4.2: Evidence Retention).
+    *   **MITRE ATT&CK:** Documents the techniques (e.g., **T1078**, **T1110**) identified during the incident for future threat intelligence and defensive improvements.
+    *   **SOC SOPs:** Enforces strict documentation standards for incident lifecycle, stakeholder communication, and compliance reporting.
+*   **Analyst Notes:**
+    *   Ensure all pertinent details—such as the incident timeline, confirmed attack vectors, evidence collected, all actions taken, and the user's response—are accurately and comprehensively captured in the incident ticket.
+    *   Verify that notifications were successfully sent to the correct parties, especially for high-priority incidents involving critical users.
+    *   This block transitions the incident from automated response to human-led follow-up, emphasizing the importance of detailed documentation for effective post-incident review and lessons learned.

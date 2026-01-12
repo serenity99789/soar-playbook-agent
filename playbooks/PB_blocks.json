@@ -1,0 +1,83 @@
+[
+  {
+    "block_name": "Initial Alert Enrichment",
+    "purpose": "Gather and enrich initial alert context, including user, source IP, and timestamps from the SIEM alert.",
+    "inputs": "Alert payload (user_id, source_ip, failure_count, success_timestamp, failure_start_time, failure_end_time).",
+    "outputs": "Enriched user details (User Principal Name (UPN), department, manager's contact info), geolocation of source IP, initial incident ID.",
+    "failure_handling": "Log enrichment error, assign 'Medium' confidence, and proceed to analyst notification with available data. Mark relevant fields as 'unresolved'.",
+    "sla_impact": "Low - initial processing. A slight delay in enrichment doesn't prevent subsequent steps but may reduce immediate context.",
+    "analyst_notes": "This block is essential for understanding the initial event and associated entities. Missing data here will impact downstream analysis accuracy."
+  },
+  {
+    "block_name": "Azure AD User & Sign-in Audit",
+    "purpose": "Check the user's current status in Azure AD (enabled, locked, MFA status) and audit recent sign-in activity (from same and different IPs/locations) around the incident timeframe.",
+    "inputs": "User Principal Name (UPN), source IP, relevant time window (e.g., 24 hours prior to success_timestamp).",
+    "outputs": "User account status (enabled/disabled/locked), MFA status, list of recent successful sign-ins (IP, location, timestamp, user agent), list of recent failed sign-ins, device information if available.",
+    "failure_handling": "Log error if Azure AD API is unreachable or returns an error. Assign 'Medium' confidence and proceed with available information. Analyst will need to manually verify AD status.",
+    "sla_impact": "Medium - critical for validating user status and identifying pre-existing issues or legitimate activity. Failure impacts confidence.",
+    "analyst_notes": "Helps distinguish between a fresh compromise and an existing one. Look for legitimate logins from the same 'malicious' IP (e.g., known VPN client) or unusual activity from other locations."
+  },
+  {
+    "block_name": "Threat Intelligence & IP Reputation Check",
+    "purpose": "Query external threat intelligence platforms (e.g., VirusTotal, AbuseIPDB) for the reputation of the successful login IP address.",
+    "inputs": "Source IP address.",
+    "outputs": "IP reputation score, associated threat categories (e.g., VPN exit node, botnet, Tor, known malicious), geolocation details from TI sources.",
+    "failure_handling": "Log error if TI service is unreachable. Proceed without TI data. This may result in a 'Medium' confidence score and require manual analyst review of the IP.",
+    "sla_impact": "Medium - crucial for assessing the external risk associated with the source IP. Failure increases manual verification time.",
+    "analyst_notes": "Distinguishes between a legitimate external IP (e.g., a corporate VPN endpoint, though specified as 'external IP') and a truly malicious or suspicious IP (e.g., known proxy, Tor exit node, botnet C2)."
+  },
+  {
+    "block_name": "Compromise Confidence Scoring",
+    "purpose": "Evaluate all collected data (user status, Azure AD history, IP reputation, specific alert conditions) to assign a confidence score indicating the likelihood of a true account compromise via brute-force success.",
+    "inputs": "User account status, MFA status, Azure AD sign-in history, source IP reputation, geolocation mismatch (if applicable), successful login from the *same* IP as brute force.",
+    "outputs": "Confidence score (High/Medium/Low), detailed justification for the score, and recommended automated actions.",
+    "failure_handling": "If critical inputs are missing or ambiguous, default to 'Medium' confidence and escalate to an analyst for manual review.",
+    "sla_impact": "High - this block is the core decision point. A high score triggers automated containment, a low score may close the alert or require minimal analyst review.",
+    "analyst_notes": "Criteria for 'High' confidence: Brute-force IP matches successful login IP, IP has poor reputation, user has no recent legitimate logins from this IP, no MFA on account. Criteria for 'Low' confidence: IP is trusted/known, successful login from different IP, user confirms legitimate activity."
+  },
+  {
+    "block_name": "Automated Account Containment (Conditional)",
+    "purpose": "If the confidence score is 'High', automatically disable the user account in Azure AD and revoke all refresh tokens to terminate active sessions.",
+    "inputs": "User Principal Name (UPN).",
+    "outputs": "Status of account disablement, status of refresh token revocation, confirmation of actions taken.",
+    "failure_handling": "Log error, send critical alert to the L2 analyst if containment fails (e.g., API error). Analyst must manually contain the account. Proceed to next blocks.",
+    "sla_impact": "High - immediate response to mitigate ongoing damage from a compromised account. Any failure significantly increases risk.",
+    "analyst_notes": "This action is disruptive and only executed for 'High' confidence. It must be reversible. The analyst will be responsible for re-enabling and assisting with password reset and MFA setup."
+  },
+  {
+    "block_name": "Automated Firewall IP Blocking (Conditional)",
+    "purpose": "If the confidence score is 'High' AND the source IP has a malicious reputation, block the source IP address on the perimeter firewall.",
+    "inputs": "Malicious source IP address.",
+    "outputs": "Status of IP block on the firewall, confirmation of action.",
+    "failure_handling": "Log error, send alert to the L2 analyst if IP blocking fails. Analyst must manually block the IP. Proceed to next blocks.",
+    "sla_impact": "Medium - reduces further external access attempts from the specific IP. Failure allows continued access attempts.",
+    "analyst_notes": "This block is only executed for 'High' confidence and if the IP is genuinely malicious (not a known VPN or legitimate partner). Block duration should be pre-defined (e.g., 24-48 hours) or set for manual review."
+  },
+  {
+    "block_name": "Evidence Preservation & Logging",
+    "purpose": "Export and archive relevant logs (Azure AD sign-ins, firewall logs) from the SIEM/native sources to the SOAR platform or a dedicated forensic share for future analysis.",
+    "inputs": "User UPN, source IP, relevant timestamps, incident ID, automated actions taken.",
+    "outputs": "Confirmation of log export/archival, links to stored evidence.",
+    "failure_handling": "Log error, notify the analyst to manually collect evidence. Highlight which logs could not be collected automatically.",
+    "sla_impact": "Medium - ensures data is available for later investigation and compliance. Failure can hamper forensic efforts.",
+    "analyst_notes": "Critical for post-incident review, forensic analysis, and potential legal hold requirements. Ensures the 'chain of custody' for evidence."
+  },
+  {
+    "block_name": "Incident Creation & Analyst Handoff",
+    "purpose": "Create a detailed incident ticket in the case management system (e.g., ServiceNow) and assign it to an L1/L2 analyst, providing all gathered context and automated actions taken.",
+    "inputs": "Incident ID, confidence score, all enriched data, automated actions taken, recommended next steps for analyst (e.g., contact user, initiate password reset, review logs).",
+    "outputs": "Incident ticket URL, notification status (e.g., email sent to L1/L2 queue).",
+    "failure_handling": "Log error, send direct email/SMS alert to on-call analysts with critical incident details. This is a crucial fallback.",
+    "sla_impact": "High - primary mechanism for analyst engagement and tracking. Failure means the incident might not be reviewed promptly.",
+    "analyst_notes": "This is the primary handoff point. Analysts need all information clearly presented in the ticket to begin their investigation and remediation steps effectively."
+  },
+  {
+    "block_name": "User & Manager Communication (Conditional)",
+    "purpose": "If an account was disabled, notify the affected user (if possible and safe) and their manager about the potential compromise and actions taken, including instructions for account recovery.",
+    "inputs": "User UPN, manager's email, incident ID, summary of compromise, account recovery instructions (e.g., contact SOC for password reset).",
+    "outputs": "Status of email notifications (sent/failed).",
+    "failure_handling": "Log error, analyst must manually communicate with the user/manager. Ensure a templated message is available for manual use.",
+    "sla_impact": "Low to Medium - aids in faster user recovery and organizational awareness. Delays can cause user frustration.",
+    "analyst_notes": "Important for managing user expectations and starting the recovery process, but requires careful template design to avoid panic and provide clear next steps. Only send if 'High' confidence and account was disabled."
+  }
+]

@@ -1,0 +1,213 @@
+SECTION A: BLOCKS_JSON
+```json
+[
+  {
+    "block_name": "Enrich Account Compromise Alert",
+    "purpose": "Gather comprehensive context for the brute force successful login, including user details, IP reputation, and recent account activity from various security tools and identity systems.",
+    "inputs": [
+      "alert_id",
+      "username",
+      "source_ip",
+      "login_timestamp",
+      "failed_attempts_count"
+    ],
+    "outputs": [
+      "user_details",
+      "ip_reputation_score",
+      "ip_geolocation",
+      "successful_login_context",
+      "recent_failed_logins",
+      "account_security_status"
+    ],
+    "failure_handling": "If enrichment fails for critical data (e.g., user details from IAM), escalate to L2 analyst and pause automation. If non-critical (e.g., IP geolocation service down), log the error and continue with available data.",
+    "sla_impact": "Low. This is initial data gathering. Delays here will slightly push back the overall response time, but critical data should be prioritized.",
+    "analyst_notes": "This block consolidates data from multiple sources (e.g., Identity Provider, HRIS, Threat Intelligence, SIEM logs, EDR). Essential for initial assessment and determining incident severity. Confirm user status (active/inactive) and any existing security flags."
+  },
+  {
+    "block_name": "Validate Brute Force Success & Malicious Activity",
+    "purpose": "Confirm the successful authentication from a brute-forced account by analyzing login history and assess if any immediate malicious post-login activity occurred to gauge the extent of compromise.",
+    "inputs": [
+      "username",
+      "source_ip",
+      "login_timestamp",
+      "successful_login_context",
+      "ip_reputation_score",
+      "recent_failed_logins",
+      "user_details"
+    ],
+    "outputs": [
+      "is_compromise_confirmed",
+      "suspicious_post_login_activity",
+      "compromise_score",
+      "impacted_systems"
+    ],
+    "failure_handling": "If validation fails due to log retrieval issues or incomplete data, escalate to L2 analyst for manual investigation. If no clear compromise is confirmed after initial checks, log findings and transition to analyst review queue for potential false positive.",
+    "sla_impact": "Medium. This is a critical decision point. Delays directly impact the speed of subsequent containment actions and overall response time.",
+    "analyst_notes": "This block uses correlation logic. Look for activity like password changes, mail forwarding rule creation, access to sensitive data (e.g., SharePoint, O365, internal applications), or unusual geographic logins immediately after the successful brute force. A high 'compromise_score' warrants immediate, aggressive containment."
+  },
+  {
+    "block_name": "Containment - Isolate User Account",
+    "purpose": "Immediately disable, suspend, or force sign-out of the compromised user account to prevent further unauthorized access and mitigate damage by revoking active sessions and future authentication.",
+    "inputs": [
+      "username",
+      "is_compromise_confirmed"
+    ],
+    "outputs": [
+      "account_isolation_status",
+      "isolation_timestamp"
+    ],
+    "failure_handling": "If account isolation fails (e.g., identity system unreachable, permission error), retry the action, then escalate to L2 analyst for immediate manual intervention. Proceed with other containment steps if possible.",
+    "sla_impact": "High. This is a critical containment step. Any delay significantly increases the risk of further damage, data exfiltration, or lateral movement.",
+    "analyst_notes": "Prioritize this action. Ensure the automation tool has the necessary permissions within the Identity and Access Management (IAM) system or Active Directory. It's crucial to inform the legitimate user about the account status via an out-of-band channel *after* the account is isolated."
+  },
+  {
+    "block_name": "Containment - Block Malicious IP Address",
+    "purpose": "Add the identified malicious source IP address to network blacklists, firewalls, or Web Application Firewalls (WAFs) to prevent further connection attempts from this source.",
+    "inputs": [
+      "source_ip",
+      "ip_reputation_score",
+      "is_compromise_confirmed"
+    ],
+    "outputs": [
+      "ip_block_status",
+      "blocked_systems"
+    ],
+    "failure_handling": "If IP blocking fails on primary network devices (e.g., firewall API error), attempt to block on secondary/backup devices or escalate to L2 analyst for manual firewall rule creation. Log the failure and any manual actions taken.",
+    "sla_impact": "High. Prevents follow-on attacks, reconnaissance, or other malicious activities originating from the same source IP.",
+    "analyst_notes": "Consider the scope of the block (global, specific subnet, specific service). A highly reputable malicious IP (e.g., from multiple threat intelligence feeds) justifies a wider block. Less reputable IPs might require analyst review to avoid false positives affecting legitimate services."
+  },
+  {
+    "block_name": "Notify User & Create Incident Ticket",
+    "purpose": "Inform the legitimate user about their compromised account and create a formal incident ticket in the ITSM/ticketing system for tracking, further investigation, and coordination.",
+    "inputs": [
+      "username",
+      "user_details",
+      "account_isolation_status",
+      "ip_block_status",
+      "incident_summary",
+      "compromise_score",
+      "impacted_systems"
+    ],
+    "outputs": [
+      "notification_status",
+      "ticket_id",
+      "ticket_status"
+    ],
+    "failure_handling": "If user notification fails (e.g., email server issue, invalid contact info), log the error and escalate for manual outreach (e.g., phone call to manager). If ticket creation fails, log the error and escalate to L2 analyst for manual ticket creation.",
+    "sla_impact": "Medium. Timely notification is crucial for user experience, cooperation in recovery, and adherence to compliance requirements. Ticket creation ensures incident traceability and formal process initiation.",
+    "analyst_notes": "User notification should ideally be out-of-band (e.g., SMS, phone call to work number, or a pre-registered alternate email) as their primary email might be compromised. The incident ticket should auto-populate with all gathered context, actions taken, and assigned severity based on the 'compromise_score'."
+  },
+  {
+    "block_name": "Eradication & Recovery - Force Password Reset",
+    "purpose": "Initiate a mandatory password reset for the compromised account, ensuring the attacker loses access even if the account is re-enabled, and guide the legitimate user through recovery.",
+    "inputs": [
+      "username",
+      "account_isolation_status",
+      "ticket_id",
+      "user_details"
+    ],
+    "outputs": [
+      "password_reset_status",
+      "temporary_password_delivery_method",
+      "recovery_instructions_sent"
+    ],
+    "failure_handling": "If the automated password reset fails (e.g., IAM system error), escalate to L2 analyst for manual intervention. Ensure the account remains isolated until a successful password reset is confirmed.",
+    "sla_impact": "High. Critical for full eradication of the attacker's access and recovery of the user's legitimate access. Directly impacts the Mean Time To Recover (MTTR).",
+    "analyst_notes": "This action often triggers a user-facing process (e.g., email with a secure reset link, temporary password delivered via secure channel). Ensure the legitimate user receives clear, step-by-step instructions for resetting their password and regaining access. The account should remain disabled until the legitimate user has successfully reset their password and Multi-Factor Authentication (MFA) is confirmed."
+  }
+]
+```
+
+SECTION B: DOCUMENTATION_TEXT
+
+### SOAR Playbook Block Documentation: Account Compromise – Brute Force Success
+
+---
+
+**Block Name: Enrich Account Compromise Alert**
+
+*   **Purpose:** To gather comprehensive context for a detected brute force successful login. This includes retrieving detailed information about the affected user, assessing the reputation and geolocation of the source IP, and collecting recent account activity logs from various security tools and identity systems. This enrichment is crucial for an accurate initial assessment and to inform subsequent automated actions.
+*   **NIST Incident Response Alignment:**
+    *   **Detection & Analysis (DA.1, DA.2, DA.3):** Facilitates the collection of event data, processing of data, and correlating information from multiple sources (SIEM, Identity Provider, HRIS, Threat Intel) to confirm the nature of the event.
+    *   **Preparation (P.1.1, P.1.2):** Relies on established baselines and proper logging configurations to gather relevant data effectively.
+*   **MITRE ATT&CK Alignment:**
+    *   **Reconnaissance (TA0043):** By checking IP reputation and user details, this block helps identify potential precursor activities (e.g., T1592 - Gather Victim Host Information, T1593 - Gather Victim Network Information).
+    *   **Initial Access (TA0001):** Helps contextualize the successful login (T1078 - Valid Accounts, T1133 - External Remote Services) by providing details surrounding the access event.
+*   **SOC Standard Operating Procedures (SOPs):**
+    *   **Initial Alert Triage:** This block automates the initial data gathering phase, which is typically a manual step performed by a Tier 1 SOC Analyst.
+    *   **Data Enrichment:** Standardizes and expedites the process of enriching alerts with contextual threat intelligence and internal asset information.
+    *   **SIEM Investigation:** Integrates with SIEM to pull relevant logs and activity data associated with the alert.
+
+---
+
+**Block Name: Validate Brute Force Success & Malicious Activity**
+
+*   **Purpose:** To confirm that a successful authentication event indeed followed a series of brute force attempts and to identify any immediate suspicious or malicious activities performed by the attacker post-login. This validation determines the confirmed compromise status and guides the severity of subsequent response actions.
+*   **NIST Incident Response Alignment:**
+    *   **Detection & Analysis (DA.2, DA.3, DA.4):** Focuses on analyzing collected event data (e.g., EDR logs, authentication logs), correlating it with failed attempts, and determining the incident's impact and scope.
+*   **MITRE ATT&CK Alignment:**
+    *   **Initial Access (TA0001):** Directly confirms the success of **T1110 - Brute Force** and subsequent **T1078 - Valid Accounts**.
+    *   **Persistence (TA0003), Privilege Escalation (TA0004), Defense Evasion (TA0005), Credential Access (TA0006), Discovery (TA0007), Collection (TA0009), Exfiltration (TA0010):** This block proactively searches for immediate post-login activities indicative of these tactics, such as attempts to change passwords (T1098 - Account Manipulation), create new accounts, access sensitive files (T1005 - Data from Local System), or modify mail forwarding rules.
+*   **SOC Standard Operating Procedures (SOPs):**
+    *   **Incident Validation:** Automates the critical step of confirming an incident, reducing false positives and accelerating response for genuine threats.
+    *   **Root Cause Analysis (Initial):** Provides initial insights into *how* the compromise occurred and *what* happened immediately afterward.
+    *   **Threat Hunting (Automated):** Automatically searches for known suspicious patterns of activity following a successful login from a suspicious source.
+
+---
+
+**Block Name: Containment - Isolate User Account**
+
+*   **Purpose:** To immediately disable, suspend, or revoke active sessions for the compromised user account. This action is paramount in preventing the attacker from conducting further unauthorized activities, mitigating potential damage, and limiting the scope of the compromise.
+*   **NIST Incident Response Alignment:**
+    *   **Containment, Eradication & Recovery (CR.1, CR.2):** A core containment strategy to limit the scope of the incident and isolate affected systems/accounts.
+*   **MITRE ATT&CK Alignment:**
+    *   **Impact (TA0040):** This defensive action counters the attacker's ability to achieve their objectives through compromised credentials (T1078 - Valid Accounts), effectively stopping or disrupting their operations.
+    *   **Defense Evasion (TA0005):** By disabling the account, the organization prevents the attacker from utilizing their "valid account" for further defense evasion or persistence.
+*   **SOC Standard Operating Procedures (SOPs):**
+    *   **Emergency Response:** A high-priority, rapid-response action in account compromise scenarios.
+    *   **Account Lockout/Disablement:** Standard procedure for suspected compromised accounts.
+    *   **Damage Control:** A primary mechanism for minimizing the impact of a confirmed breach.
+
+---
+
+**Block Name: Containment - Block Malicious IP Address**
+
+*   **Purpose:** To add the identified malicious source IP address to network security devices (e.g., firewalls, WAFs, network ACLs) to prevent any further communication attempts, subsequent attacks, or reconnaissance from that specific IP address.
+*   **NIST Incident Response Alignment:**
+    *   **Containment, Eradication & Recovery (CR.1):** A key technical control for containing the incident by preventing external access from a known malicious source.
+*   **MITRE ATT&CK Alignment:**
+    *   **Initial Access (TA0001):** Disrupts potential future attempts via T1190 - Exploit Public-Facing Application or T1078 - Valid Accounts from the same source.
+    *   **Command and Control (TA0011):** If the IP is part of a C2 infrastructure, blocking it disrupts the attacker's ability to communicate with compromised internal assets (e.g., T1090 - Proxy, T1071 - Application Layer Protocol).
+*   **SOC Standard Operating Procedures (SOPs):**
+    *   **Firewall Management:** Automates the creation/modification of firewall rules based on threat intelligence.
+    *   **Network Access Control:** Enforces policies to block known malicious entities from network resources.
+    *   **Threat Intelligence Enforcement:** Directly applies threat intelligence feeds to network perimeter devices.
+
+---
+
+**Block Name: Notify User & Create Incident Ticket**
+
+*   **Purpose:** To inform the legitimate user (via an out-of-band communication channel) about their compromised account and to formally create an incident ticket within the IT Service Management (ITSM) system. This ensures transparency with the affected user and establishes a formal record for tracking, further investigation, and adherence to incident management policies.
+*   **NIST Incident Response Alignment:**
+    *   **Communication (CO.1, CO.2):** Addresses the critical need for both internal (ticket creation, SOC L2) and external (user) communications during an incident.
+    *   **Detection & Analysis (DA.5):** Focuses on documenting the incident and its details for future reference and reporting.
+*   **MITRE ATT&CK Alignment:**
+    *   This block is primarily for defensive operationalization and organizational response, not directly mapping to attacker tactics. It's crucial for the incident response lifecycle.
+*   **SOC Standard Operating Procedures (SOPs):**
+    *   **Incident Reporting:** Automates the creation of a formal incident record.
+    *   **Stakeholder Communication:** Standardizes the process for notifying affected parties, including the end-user and internal teams.
+    *   **IT Service Management (ITSM) Integration:** Ensures all incidents are logged and tracked according to organizational procedures.
+
+---
+
+**Block Name: Eradication & Recovery - Force Password Reset**
+
+*   **Purpose:** To initiate a mandatory password reset for the compromised account. This ensures that the attacker's control over the account is permanently removed, even if temporary isolation measures are bypassed or expire. It also initiates the process for the legitimate user to regain secure access to their account.
+*   **NIST Incident Response Alignment:**
+    *   **Eradication & Recovery (CR.3, CR.4):** A crucial step in eradicating the compromised credentials and recovering the affected system/account to a trusted state.
+*   **MITRE ATT&CK Alignment:**
+    *   **Persistence (TA0003), Defense Evasion (TA0005):** Directly counters the attacker's ability to maintain persistence or evade defenses through **T1078 - Valid Accounts** by invalidating the stolen credentials.
+*   **SOC Standard Operating Procedures (SOPs):**
+    *   **Credential Management:** Enforces secure credential practices post-compromise.
+    *   **Account Recovery:** Provides a structured process for users to regain access to their accounts securely.
+    *   **Security Awareness:** Often involves providing the user with guidance on creating strong passwords and enabling MFA.

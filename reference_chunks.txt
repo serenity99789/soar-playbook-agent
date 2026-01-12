@@ -1,0 +1,11 @@
+[CSA_PLAYBOOKS]
+CSA Singapore Incident Response Playbooks provide practical response workflows for malware, ransomware, phishing, and account compromise scenarios.
+
+[NIST_IR]
+NIST SP 800-61r2 defines incident response phases: Preparation, Detection & Analysis, Containment, Eradication, Recovery, and Post-Incident Activity.
+
+[MITRE_ATTACK]
+MITRE ATT&CK maps adversary tactics and techniques such as Credential Access, Initial Access, Lateral Movement, and Impact.
+
+[SOC_SOP]
+Enterprise SOC SOPs define alert triage, escalation, analyst handoff, SLA tracking, evidence preservation, and stakeholder notification.

@@ -1,0 +1,271 @@
+```json
+[
+  {
+    "block_name": "AD_User_Enrichment",
+    "purpose": "Gather comprehensive profile information for the potentially compromised user from Azure AD, including roles, groups, MFA status, and recent activity.",
+    "inputs": [
+      "user_id",
+      "successful_login_ip"
+    ],
+    "outputs": [
+      "user_principal_name",
+      "user_display_name",
+      "is_admin_role",
+      "mfa_enabled",
+      "mfa_status_at_login",
+      "user_groups",
+      "last_known_logon_location",
+      "last_known_logon_time"
+    ],
+    "failure_handling": "Log API error, mark user enrichment as partial, and proceed. Analyst notified in incident ticket.",
+    "sla_impact": "Low (adds initial context gathering time, typically seconds).",
+    "analyst_notes": "Provides critical context for the user, especially if they hold administrative privileges or if MFA was bypassed/absent. Verify 'mfa_status_at_login' for the suspicious login."
+  },
+  {
+    "block_name": "IP_Reputation_GeoIP_Check",
+    "purpose": "Evaluate the risk associated with the successful login's source IP address using threat intelligence feeds and determine its geographic location and ASN.",
+    "inputs": [
+      "successful_login_ip"
+    ],
+    "outputs": [
+      "ip_reputation_score",
+      "ip_reputation_feed_matches",
+      "geo_country",
+      "geo_city",
+      "asn",
+      "is_vpn_proxy_service"
+    ],
+    "failure_handling": "Log lookup failure, assume unknown reputation, and proceed. Analyst can manually check if needed.",
+    "sla_impact": "Low (adds initial context gathering time, typically seconds).",
+    "analyst_notes": "Helps determine if the IP is known malicious, associated with anonymous services (VPN/proxy), or an unusual geographic location for the user."
+  },
+  {
+    "block_name": "AzureAD_SignIn_Log_Analysis",
+    "purpose": "Analyze Azure AD sign-in logs to confirm the brute force attempts, details of the successful login, device information, and MFA status for the successful login.",
+    "inputs": [
+      "user_id",
+      "successful_login_ip",
+      "successful_login_time",
+      "detection_time_window"
+    ],
+    "outputs": [
+      "successful_login_details",
+      "mfa_result_successful_login",
+      "login_location_variance",
+      "failed_logins_count",
+      "failed_login_details"
+    ],
+    "failure_handling": "Log query failure, mark log analysis as incomplete, and notify analyst to manually review logs.",
+    "sla_impact": "Medium (requires log querying, potential for delays with large data sets).",
+    "analyst_notes": "This block confirms the details of the successful login and the preceding brute force. Pay close attention to 'mfa_result_successful_login' and 'login_location_variance'."
+  },
+  {
+    "block_name": "Compromise_Confidence_Scoring",
+    "purpose": "Synthesize all collected data (user context, IP reputation, login details) to calculate a confidence score for account compromise and recommend automated actions.",
+    "inputs": [
+      "user_principal_name",
+      "is_admin_role",
+      "mfa_enabled",
+      "mfa_status_at_login",
+      "ip_reputation_score",
+      "geo_country",
+      "login_location_variance",
+      "mfa_result_successful_login"
+    ],
+    "outputs": [
+      "compromise_confidence_score",
+      "recommended_containment_actions",
+      "justification_for_score"
+    ],
+    "failure_handling": "Default to 'Medium' confidence if critical inputs are missing, notify analyst.",
+    "sla_impact": "Low (computational decision point).",
+    "analyst_notes": "This is the primary decision point. A 'High' confidence score will trigger automated containment. Review the 'justification_for_score' thoroughly."
+  },
+  {
+    "block_name": "Conditional_AD_Containment",
+    "purpose": "If compromise confidence is 'High', automatically force a password reset and revoke all user sessions in Azure AD to limit further unauthorized access.",
+    "inputs": [
+      "user_id",
+      "compromise_confidence_score",
+      "recommended_containment_actions"
+    ],
+    "outputs": [
+      "password_reset_status",
+      "sessions_revoked_status",
+      "ad_containment_execution_time"
+    ],
+    "failure_handling": "Log API error, mark containment as failed, notify analyst immediately for manual intervention.",
+    "sla_impact": "High (direct user impact, critical for containing active threats).",
+    "analyst_notes": "Automated containment directly impacts the user. Verify the 'password_reset_status' and 'sessions_revoked_status'. Communicate with the user if possible after manual verification."
+  },
+  {
+    "block_name": "Conditional_Firewall_IP_Block",
+    "purpose": "If compromise confidence is 'High' and the IP reputation warrants it, automatically create a firewall rule to block the source IP address.",
+    "inputs": [
+      "successful_login_ip",
+      "compromise_confidence_score",
+      "ip_reputation_score",
+      "recommended_containment_actions"
+    ],
+    "outputs": [
+      "ip_block_status",
+      "firewall_rule_id"
+    ],
+    "failure_handling": "Log API error, mark IP block as failed, notify analyst for manual intervention. Proceed with other actions.",
+    "sla_impact": "Medium (impacts external access from the specific IP).",
+    "analyst_notes": "Blocking an IP can impact legitimate services if the IP is shared (e.g., cloud proxy). Review 'ip_block_status' and consider the broader context of the IP."
+  },
+  {
+    "block_name": "Evidence_Preservation",
+    "purpose": "Collect and export relevant audit logs, sign-in logs (Azure AD), firewall logs, and EDR logs (if available) for forensic analysis and evidence retention.",
+    "inputs": [
+      "user_id",
+      "successful_login_ip",
+      "successful_login_time",
+      "detection_time_window",
+      "user_principal_name"
+    ],
+    "outputs": [
+      "exported_ad_logs_link",
+      "exported_firewall_logs_link",
+      "exported_edr_logs_link",
+      "evidence_storage_location"
+    ],
+    "failure_handling": "Log export errors, notify analyst to manually collect logs, proceed with incident creation.",
+    "sla_impact": "Low (background task, can run concurrently or after critical containment).",
+    "analyst_notes": "Crucial for post-incident review and potential legal/compliance requirements. Ensure all relevant logs are successfully stored."
+  },
+  {
+    "block_name": "Incident_Creation_Notification",
+    "purpose": "Create a high-priority incident ticket in the ITSM/SOAR platform, populate it with all collected details and actions taken, and notify L1/L2 analysts.",
+    "inputs": [
+      "compromise_confidence_score",
+      "user_principal_name",
+      "successful_login_ip",
+      "ip_reputation_score",
+      "successful_login_details",
+      "password_reset_status",
+      "sessions_revoked_status",
+      "ip_block_status",
+      "exported_ad_logs_link",
+      "justification_for_score"
+    ],
+    "outputs": [
+      "incident_ticket_id",
+      "analyst_notification_status"
+    ],
+    "failure_handling": "Log ITSM API error, send an emergency email notification to the SOC distribution list with incident summary.",
+    "sla_impact": "High (ensures timely analyst engagement and adherence to response SLAs).",
+    "analyst_notes": "This is the handover point. The ticket should contain all necessary information and clear next steps for the L1/L2 analyst to validate, communicate with the user, and complete the investigation."
+  }
+]
+```
+SECTION B: DOCUMENTATION_TEXT
+**SOAR Playbook: Account Compromise - Brute Force Success**
+
+**1. Overview**
+
+*   **Playbook Name:** Account Compromise - Brute Force Success
+*   **Use Case:** Detection of a successful login following a high volume of failed authentication attempts (brute force) on an Azure AD user account from the same external IP address.
+*   **Description:** This playbook automates the initial investigation, validation, conditional containment, and evidence collection for confirmed brute-force account compromises targeting Azure AD identities. It aims to quickly mitigate threats and provide comprehensive context to SOC analysts for full incident resolution.
+
+**2. Trigger**
+
+*   **Source:** SIEM alert
+*   **Conditions:**
+    *   Greater than 20 failed authentication attempts for a single user account.
+    *   All failed attempts originate from the same external IP address.
+    *   Occurring within a 10-minute time window.
+    *   Immediately followed by a successful login from the same external IP address.
+
+**3. Objectives**
+
+*   **Validate** whether this is a true account compromise versus a false positive.
+*   **Automatically contain** high-confidence threats by forcing password resets, revoking sessions, and blocking malicious IPs at the firewall.
+*   **Preserve evidence** from Azure AD, firewall, and EDR for forensic analysis and post-incident review.
+*   **Notify** L1/L2 SOC analysts with clear, actionable next steps and full incident context.
+
+**4. Scope**
+
+*   **Identity Provider:** Azure Active Directory (Azure AD)
+*   **Endpoint:** EDR-monitored endpoints (for contextual data, if applicable)
+*   **Network:** Firewall logs for external IP analysis and blocking.
+*   **SOC Operations:** 24x7 coverage by L1 and L2 analysts.
+
+**5. Prerequisites**
+
+*   **API Integrations:**
+    *   Azure AD (read/write access for user properties, sign-in logs, audit logs, user session management).
+    *   Threat Intelligence Platforms (e.g., VirusTotal, AbuseIPDB for IP reputation).
+    *   Firewall management API (for creating/modifying IP block rules).
+    *   EDR platform API (for querying endpoint details, if user's device is known).
+    *   ITSM/Ticketing System API (for incident creation and updates).
+*   **Log Sources:** Centralized logging of Azure AD sign-in/audit logs, firewall connection logs, and EDR telemetry.
+*   **SIEM Rules:** Configured SIEM rules to detect the specified brute force success pattern.
+
+**6. Playbook Steps**
+
+1.  **Enrich User Profile (Azure AD)**
+    *   Query Azure AD for the affected `user_id`.
+    *   Retrieve `user_principal_name`, `display_name`, `is_admin_role`, `mfa_enabled` status, `user_groups`, `last_known_logon_location`, and `last_known_logon_time`.
+2.  **Evaluate IP Reputation & Geo-location**
+    *   Perform a lookup on the `successful_login_ip` against configured Threat Intelligence Platforms.
+    *   Obtain `ip_reputation_score`, `feed_matches`, `geo_country`, `geo_city`, and `ASN`.
+    *   Determine if the IP is associated with known VPN/proxy services.
+3.  **Analyze Azure AD Sign-in Logs**
+    *   Query Azure AD sign-in logs for the `user_id` and `successful_login_ip` within the relevant `time_window`.
+    *   Confirm the `failed_logins_count` and collect details of the `successful_login_details` (e.g., device, OS, browser, authentication method, conditional access status).
+    *   Crucially, extract the `mfa_result_successful_login` for the successful attempt.
+    *   Calculate `login_location_variance` based on the user's usual login patterns.
+4.  **Determine Compromise Confidence**
+    *   Synthesize all collected data: user's admin status, MFA status, IP reputation, geographic anomaly, and MFA result for the successful login.
+    *   Calculate a `compromise_confidence_score` (High, Medium, Low).
+    *   Based on this score, `recommended_containment_actions` are determined (e.g., 'ForcePasswordReset', 'RevokeSessions', 'BlockIP').
+5.  **Conditional Containment - Azure AD**
+    *   **IF `compromise_confidence_score` is 'High':**
+        *   Automatically force a password reset for the affected user in Azure AD.
+        *   Revoke all active sessions for the user in Azure AD.
+    *   **ELSE (Medium/Low confidence):** Skip automated Azure AD containment.
+6.  **Conditional Containment - Firewall IP Block**
+    *   **IF `compromise_confidence_score` is 'High' AND `ip_reputation_score` indicates malicious or highly unusual IP:**
+        *   Automatically create a firewall rule to block inbound traffic from the `successful_login_ip`.
+    *   **ELSE:** Skip automated IP blocking.
+7.  **Preserve Evidence**
+    *   Export relevant logs for forensic analysis and long-term storage:
+        *   Azure AD audit logs and sign-in logs for the user/timeframe.
+        *   Firewall logs related to the `successful_login_ip`.
+        *   Any relevant EDR logs from the user's associated devices (if applicable).
+    *   Store logs in a designated evidence repository, providing `exported_log_links`.
+8.  **Create Incident & Notify Analysts**
+    *   Create a high-priority incident ticket in the ITSM system.
+    *   Populate the ticket with all collected `user_principal_name`, `successful_login_ip`, `compromise_confidence_score`, `justification_for_score`, details of `successful_login_details`, status of automated containment actions (`password_reset_status`, `sessions_revoked_status`, `ip_block_status`), and `exported_log_links`.
+    *   Notify L1/L2 SOC analysts via the ticketing system and configured communication channels (e.g., Slack, email).
+
+**7. Outputs & Notifications**
+
+*   **Incident Ticket:** A high-priority incident in the ITSM/ticketing system containing all collected data, automated action outcomes, and links to preserved evidence.
+*   **Analyst Notification:** Real-time alert to L1/L2 SOC analysts through established channels.
+*   **Containment Status:** Confirmation of automated password reset, session revocation, and IP blocking (if executed).
+
+**8. Analyst Responsibilities (L1/L2)**
+
+1.  **Incident Review:** Thoroughly review the generated incident ticket, focusing on the `compromise_confidence_score` and `justification_for_score`.
+2.  **Verify Automated Actions:** Confirm the successful execution of automated password reset, session revocation, and IP blocking. Address any failed actions manually.
+3.  **User Communication:** Initiate out-of-band communication (e.g., phone call) with the affected user to confirm the legitimacy of the login, guide them through the password reset process, and provide security awareness.
+4.  **Scope of Compromise:** Investigate if the compromised account was used to access sensitive data, modify configurations, elevate privileges, or perform lateral movement within the environment. Utilize EDR, file access logs, and other relevant data sources.
+5.  **Malware Check:** If initial device information suggests a potential endpoint compromise, initiate an EDR scan on the user's primary device(s).
+6.  **Threat Hunting:** Proactively search for similar brute force attempts or successful logins involving other accounts or external IPs, and analyze firewall logs for further related activity.
+7.  **Root Cause Analysis:** Identify the root cause of the brute force success (e.g., weak password, lack of MFA, credential stuffing).
+8.  **Remediation & Closure:** Ensure all necessary steps are completed for full remediation, document findings, and close the incident.
+
+**9. Escalation Paths**
+
+*   **L1 to L2:** If the L1 analyst cannot definitively determine the scope of compromise, identify the root cause, or complete remediation. Also, for any failures in automated containment or complex user interactions.
+*   **L2 to Incident Response Team (IRT):** For widespread compromise, evidence of lateral movement, persistence mechanisms, exfiltration, or compromise of highly sensitive accounts (e.g., C-level executives, critical infrastructure administrators).
+
+**10. SLA Considerations**
+
+*   **Detection to Notification:** Target < 5 minutes.
+*   **Notification to Initial Automated Containment (if confidence is High):** Target < 10 minutes.
+*   **Notification to Analyst Review:** Target < 15 minutes.
+*   **Full Remediation:** Target 4-24 hours depending on the scope and severity of the compromise.

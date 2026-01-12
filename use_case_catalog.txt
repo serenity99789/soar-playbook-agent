@@ -1,0 +1,17 @@
+1. Account Compromise – Brute Force Success
+Multiple failed authentication attempts from a single IP followed by a successful login.
+
+2. Phishing Email – User Clicked Link
+User clicked a link in a suspected phishing email detected by email security gateway.
+
+3. Malware Detection – Endpoint Alert
+Endpoint protection detected malicious file execution on a corporate workstation.
+
+4. Impossible Travel – Successful Login
+User logged in successfully from two geographically distant locations within an impossible time window.
+
+5. Privileged Account Abuse
+Admin account performed abnormal actions outside normal working hours.
+
+6. Ransomware Activity Detected
+Multiple files encrypted rapidly on a single endpoint indicating ransomware behavior.

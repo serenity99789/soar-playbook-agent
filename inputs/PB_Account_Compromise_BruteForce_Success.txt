@@ -1,0 +1,4 @@
+Account Compromise – Brute Force Success
+
+Multiple failed login attempts from a single IP,
+followed by a successful authentication.
