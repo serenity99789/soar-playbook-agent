@@ -8,6 +8,7 @@ from google import genai
 # CONFIG
 # -------------------------------------------------
 st.set_page_config(page_title="SOAR Playbook Generator", layout="wide")
+st.caption("Built by Srinivas")
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
