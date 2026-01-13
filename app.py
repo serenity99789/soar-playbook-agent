@@ -3,7 +3,6 @@ import json
 import re
 import streamlit as st
 from google import genai
-from graphviz import Digraph
 
 # -------------------------------------------------
 # CONFIG
@@ -13,21 +12,25 @@ st.caption("Built by Srinivas")
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
-    st.error("GEMINI_API_KEY not set. Please set it in Streamlit secrets.")
+    st.error("GEMINI_API_KEY not set. Please set it in Streamlit Secrets.")
     st.stop()
 
 client = genai.Client(api_key=API_KEY)
 
 # -------------------------------------------------
-# HELPERS
+# PROMPT
 # -------------------------------------------------
 def build_prompt(use_case: str) -> str:
     return f"""
-You are a SOAR playbook generation engine.
+You are a SOAR Playbook Generation Engine.
 
-Return STRICT JSON only. No explanations, no markdown.
+You MUST return STRICT VALID JSON ONLY.
+NO markdown.
+NO explanations.
+NO text outside JSON.
 
-JSON schema:
+The JSON schema MUST be EXACTLY:
+
 {{
   "blocks": [
     {{
@@ -43,50 +46,43 @@ JSON schema:
   "documentation": ""
 }}
 
+Rules:
+- The FIRST block MUST be a Trigger block.
+- The flow MUST be linear (top to bottom).
+- Use SOC / SOAR terminology.
+- Assume enterprise environment.
+
 Use case:
 {use_case}
 """
 
+# -------------------------------------------------
+# PARSERS
+# -------------------------------------------------
 def extract_json(text: str):
-    match = re.search(r"\{{.*\}}", text, re.DOTALL)
-    if not match:
-        return None
     try:
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if not match:
+            return None
         return json.loads(match.group())
     except Exception:
         return None
 
-def derive_confidence(blocks):
-    score = 0
-    names = " ".join(b["block_name"].lower() for b in blocks)
-
-    if "trigger" in names:
-        score += 1
-    if "enrich" in names or "context" in names:
-        score += 1
-    if "contain" in names or "reset" in names:
-        score += 1
-
-    if score >= 3:
-        return "HIGH", "Automated containment recommended"
-    elif score == 2:
-        return "MEDIUM", "Analyst validation recommended"
-    else:
-        return "LOW", "Monitor only"
-
-def build_flowchart(blocks):
-    dot = Digraph(comment="SOAR Playbook Flow", graph_attr={"rankdir": "TB"})
+# -------------------------------------------------
+# FLOWCHART (CLOUD SAFE)
+# -------------------------------------------------
+def build_flowchart_dot(blocks):
+    dot = "digraph SOAR {\n"
+    dot += "rankdir=TB;\n"
+    dot += "node [shape=box style=rounded fontname=Arial];\n"
 
     for i, block in enumerate(blocks):
-        dot.node(
-            str(i),
-            f"{block['block_name']}\n\n{block['purpose']}",
-            shape="box"
-        )
-
+        label = f"{block['block_name']}\\n\\n{block['purpose']}"
+        dot += f'node{i} [label="{label}"];\n'
         if i > 0:
-            dot.edge(str(i - 1), str(i))
+            dot += f"node{i-1} -> node{i};\n"
 
+    dot += "}"
     return dot
 
 # -------------------------------------------------
@@ -97,7 +93,7 @@ st.title("🛡️ SOAR Playbook Generator")
 use_case_input = st.text_area(
     "SOAR Use Case Description",
     height=220,
-    placeholder="Account Compromise – Brute Force Success"
+    placeholder="Describe the security scenario..."
 )
 
 generate = st.button("Generate Playbook")
@@ -110,27 +106,27 @@ if generate:
         st.warning("Please enter a use case.")
         st.stop()
 
-    with st.spinner("Generating SOAR playbook..."):
+    with st.spinner("Generating playbook..."):
         response = client.models.generate_content(
             model="models/gemini-2.5-flash",
             contents=build_prompt(use_case_input),
         )
         raw_output = response.text
 
-    parsed = extract_json(raw_output)
+    data = extract_json(raw_output)
 
-    if not parsed or not parsed.get("blocks"):
-        st.error("No valid playbook blocks returned.")
+    if not data or "blocks" not in data:
+        st.error("No valid playbook JSON returned.")
         st.text_area("Raw AI Output", raw_output, height=300)
         st.stop()
 
-    blocks = parsed["blocks"]
-    documentation = parsed.get("documentation", "")
+    blocks = data["blocks"]
+    documentation = data.get("documentation", "")
 
     st.success("Playbook generated successfully")
 
     # -------------------------------------------------
-    # PLAYBOOK BLOCKS (TEXT)
+    # BLOCKS (TEXT)
     # -------------------------------------------------
     st.header("🧩 Playbook Blocks")
 
@@ -144,24 +140,15 @@ if generate:
             st.markdown(f"**Analyst Notes:** {block['analyst_notes']}")
 
     # -------------------------------------------------
-    # GRAPHICAL SOAR FLOW (THIS IS THE NEW PART)
+    # FLOWCHART (GUI)
     # -------------------------------------------------
-    st.header("🧭 SOAR Execution Flow (Graphical)")
+    st.header("🔗 SOAR Flow (Graphical)")
 
-    flowchart = build_flowchart(blocks)
-    st.graphviz_chart(flowchart)
-
-    # -------------------------------------------------
-    # DECISION SUMMARY
-    # -------------------------------------------------
-    st.header("🧠 SOC Decision Summary")
-
-    confidence, recommendation = derive_confidence(blocks)
-    st.markdown(f"**Confidence Level:** `{confidence}`")
-    st.markdown(f"**Recommended Action:** `{recommendation}`")
+    dot_flow = build_flowchart_dot(blocks)
+    st.graphviz_chart(dot_flow)
 
     # -------------------------------------------------
     # DOCUMENTATION
     # -------------------------------------------------
     st.header("📄 Playbook Documentation")
-    st.markdown(documentation or "_No documentation returned_")
+    st.markdown(documentation or "_No documentation provided_")
