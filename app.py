@@ -22,20 +22,35 @@ client = genai.Client(api_key=API_KEY)
 # -------------------------------------------------
 def build_prompt(use_case: str) -> str:
     return f"""
-You are an AI agent for SOAR Playbook Automation.
-
-STRICT OUTPUT FORMAT.
-DO NOT add explanations outside the defined sections.
-
-SECTION A: BLOCKS_JSON
-Return a JSON array. Each object must contain:
-- block_name
-- purpose
-- inputs
-- outputs
-- failure_handling
-- sla_impact
-- analyst_notes
+You are a SOAR playbook generation engine.
+ 
+You MUST return your response in STRICT JSON.
+DO NOT include explanations, markdown, or prose outside JSON.
+DO NOT omit outer braces.
+ 
+The JSON schema MUST be:
+ 
+{
+  "blocks": [
+    {
+      "block_name": "",
+      "purpose": "",
+      "inputs": [],
+      "outputs": [],
+      "failure_handling": "",
+      "sla_impact": "",
+      "analyst_notes": ""
+    }
+  ],
+  "documentation": ""
+}
+ 
+If you cannot generate valid JSON, return:
+ 
+{
+  "blocks": [],
+  "documentation": "Generation failed"
+}
 
 SECTION B: DOCUMENTATION_TEXT
 Clear, professional SOC-ready documentation.
