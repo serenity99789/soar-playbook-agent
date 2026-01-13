@@ -1,6 +1,5 @@
 import os
 import json
-import re
 import streamlit as st
 from google import genai
 
@@ -12,7 +11,7 @@ st.caption("Built by Srinivas")
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
-    st.error("GEMINI_API_KEY not set. Please set it and restart.")
+    st.error("GEMINI_API_KEY not set. Please set it in Streamlit Secrets.")
     st.stop()
 
 client = genai.Client(api_key=API_KEY)
@@ -22,17 +21,13 @@ client = genai.Client(api_key=API_KEY)
 # -------------------------------------------------
 def build_prompt(use_case: str) -> str:
     return f"""
-You are a SOAR playbook generation engine.
- 
-You MUST return your response in STRICT JSON.
-DO NOT include explanations, markdown, or prose outside JSON.
-DO NOT omit outer braces.
- 
-The JSON schema MUST be:
- 
-{
+Return ONLY valid JSON. No explanations. No markdown.
+
+The JSON MUST strictly follow this schema:
+
+{{
   "blocks": [
-    {
+    {{
       "block_name": "",
       "purpose": "",
       "inputs": [],
@@ -40,49 +35,46 @@ The JSON schema MUST be:
       "failure_handling": "",
       "sla_impact": "",
       "analyst_notes": ""
-    }
+    }}
   ],
   "documentation": ""
-}
- 
-If you cannot generate valid JSON, return:
- 
-{
+}}
+
+If valid JSON cannot be produced, return exactly:
+
+{{
   "blocks": [],
   "documentation": "Generation failed"
-}
+}}
 
+Use case:
+{use_case}
 """
 
-def extract_blocks_json(text: str):
-    match = re.search(r"\[\s*{.*?}\s*\]", text, re.DOTALL)
-    if not match:
-        return []
+def parse_response(text: str):
     try:
-        return json.loads(match.group())
+        data = json.loads(text)
+        blocks = data.get("blocks", [])
+        documentation = data.get("documentation", "")
+        return blocks, documentation
     except Exception:
-        return []
-
-def extract_documentation(text: str):
-    if "SECTION B:" in text:
-        return text.split("SECTION B:")[-1].strip()
-    return ""
+        return [], ""
 
 def derive_confidence(blocks):
     signals = []
     score = 0
 
-    block_names = " ".join(b["block_name"].lower() for b in blocks)
+    block_names = " ".join(b.get("block_name", "").lower() for b in blocks)
 
     if "ip" in block_names:
         score += 1
         signals.append("Suspicious IP reputation checks present")
 
-    if "endpoint" in block_names:
+    if "endpoint" in block_names or "edr" in block_names:
         score += 1
         signals.append("Endpoint / EDR context evaluated")
 
-    if "containment" in block_names or "reset" in block_names:
+    if "contain" in block_names or "reset" in block_names:
         score += 1
         signals.append("Containment actions defined")
 
@@ -119,13 +111,12 @@ if generate:
             model="models/gemini-2.5-flash",
             contents=build_prompt(use_case_input),
         )
-        raw_output = response.text
+        raw_output = response.text.strip()
 
-    blocks = extract_blocks_json(raw_output)
-    documentation = extract_documentation(raw_output)
+    blocks, documentation = parse_response(raw_output)
 
     if not blocks:
-        st.error("No valid blocks JSON parsed.")
+        st.error("No valid playbook blocks returned.")
         st.text_area("Raw AI Output", raw_output, height=300)
         st.stop()
 
@@ -153,7 +144,7 @@ if generate:
     st.code(flow)
 
     # -------------------------------------------------
-    # DECISION SUMMARY (STEP 2)
+    # DECISION SUMMARY
     # -------------------------------------------------
     st.header("🧠 Decision Summary")
 
@@ -171,3 +162,4 @@ if generate:
     # -------------------------------------------------
     st.header("📄 Playbook Documentation")
     st.markdown(documentation or "_No documentation returned_")
+
