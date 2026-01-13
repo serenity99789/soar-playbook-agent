@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import streamlit as st
 from google import genai
 
@@ -11,77 +12,88 @@ st.caption("Built by Srinivas")
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
-    st.error("GEMINI_API_KEY not set. Please set it in Streamlit Secrets.")
+    st.error("GEMINI_API_KEY not set. Please set it in Streamlit secrets.")
     st.stop()
 
 client = genai.Client(api_key=API_KEY)
 
 # -------------------------------------------------
-# HELPERS
+# PROMPT (STRICT + JSON-SAFE)
 # -------------------------------------------------
 def build_prompt(use_case: str) -> str:
     return f"""
-Return ONLY valid JSON. No explanations. No markdown.
+You are a SOAR playbook generation engine.
 
-The JSON MUST strictly follow this schema:
+CRITICAL RULES:
+- Output MUST be valid JSON
+- Output MUST start with {{ and end with }}
+- Do NOT include explanations, markdown, headings, or extra text
+- Do NOT include bullet points outside JSON
+- If JSON is invalid, the response is unusable
+
+You MUST follow this EXACT schema:
 
 {{
   "blocks": [
     {{
-      "block_name": "",
-      "purpose": "",
-      "inputs": [],
-      "outputs": [],
-      "failure_handling": "",
-      "sla_impact": "",
-      "analyst_notes": ""
+      "block_name": "Incident_Ingestion_and_Triage",
+      "purpose": "Brief purpose",
+      "inputs": ["input1", "input2"],
+      "outputs": ["output1"],
+      "failure_handling": "Failure handling steps",
+      "sla_impact": "SLA impact",
+      "analyst_notes": "Notes for SOC analysts"
     }}
   ],
-  "documentation": ""
+  "documentation": "SOC-ready documentation text"
 }}
 
-If valid JSON cannot be produced, return exactly:
+If you cannot comply, return EXACTLY this JSON and nothing else:
 
 {{
   "blocks": [],
   "documentation": "Generation failed"
 }}
 
-Use case:
+Generate the playbook for the following use case:
+
 {use_case}
 """
 
-def parse_response(text: str):
+# -------------------------------------------------
+# PARSERS (ROBUST)
+# -------------------------------------------------
+def extract_json(text: str):
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        return None
     try:
-        data = json.loads(text)
-        blocks = data.get("blocks", [])
-        documentation = data.get("documentation", "")
-        return blocks, documentation
+        return json.loads(match.group())
     except Exception:
-        return [], ""
+        return None
 
 def derive_confidence(blocks):
-    signals = []
     score = 0
+    signals = []
 
-    block_names = " ".join(b.get("block_name", "").lower() for b in blocks)
+    names = " ".join(b.get("block_name", "").lower() for b in blocks)
 
-    if "ip" in block_names:
+    if "ip" in names:
         score += 1
-        signals.append("Suspicious IP reputation checks present")
+        signals.append("IP reputation checks present")
 
-    if "endpoint" in block_names or "edr" in block_names:
+    if "endpoint" in names or "edr" in names:
         score += 1
-        signals.append("Endpoint / EDR context evaluated")
+        signals.append("Endpoint / EDR analysis present")
 
-    if "contain" in block_names or "reset" in block_names:
+    if "contain" in names or "reset" in names:
         score += 1
         signals.append("Containment actions defined")
 
     if score >= 3:
         return "HIGH", signals, "Automated containment recommended"
     elif score == 2:
-        return "MEDIUM", signals, "Analyst review recommended"
+        return "MEDIUM", signals, "Analyst approval recommended"
     else:
         return "LOW", signals, "Monitor only"
 
@@ -92,8 +104,8 @@ st.title("🛡️ SOAR Playbook Generator")
 
 use_case_input = st.text_area(
     "SOAR Use Case Description",
-    height=220,
-    placeholder="Account Compromise – Brute Force Success"
+    height=240,
+    placeholder="Describe the SOAR use case here…"
 )
 
 generate = st.button("Generate Playbook")
@@ -111,33 +123,41 @@ if generate:
             model="models/gemini-2.5-flash",
             contents=build_prompt(use_case_input),
         )
-        raw_output = response.text.strip()
+        raw_output = response.text
 
-    blocks, documentation = parse_response(raw_output)
+    parsed = extract_json(raw_output)
 
-    if not blocks:
+    if not parsed or "blocks" not in parsed:
         st.error("No valid playbook blocks returned.")
         st.text_area("Raw AI Output", raw_output, height=300)
         st.stop()
 
-    st.success("Playbook blocks generated successfully")
+    blocks = parsed.get("blocks", [])
+    documentation = parsed.get("documentation", "")
+
+    if not blocks:
+        st.error("Model returned empty blocks.")
+        st.text_area("Raw AI Output", raw_output, height=300)
+        st.stop()
+
+    st.success("Playbook generated successfully")
 
     # -------------------------------------------------
-    # PLAYBOOK BLOCKS
+    # BLOCKS
     # -------------------------------------------------
     st.header("🧩 Playbook Blocks")
 
     for i, block in enumerate(blocks, start=1):
-        with st.expander(f"Block {i}: {block['block_name']}"):
-            st.markdown(f"**Purpose:** {block['purpose']}")
-            st.markdown(f"**Inputs:** {', '.join(block['inputs'])}")
-            st.markdown(f"**Outputs:** {', '.join(block['outputs'])}")
-            st.markdown(f"**Failure Handling:** {block['failure_handling']}")
-            st.markdown(f"**SLA Impact:** {block['sla_impact']}")
-            st.markdown(f"**Analyst Notes:** {block['analyst_notes']}")
+        with st.expander(f"Block {i}: {block.get('block_name')}"):
+            st.markdown(f"**Purpose:** {block.get('purpose')}")
+            st.markdown(f"**Inputs:** {', '.join(block.get('inputs', []))}")
+            st.markdown(f"**Outputs:** {', '.join(block.get('outputs', []))}")
+            st.markdown(f"**Failure Handling:** {block.get('failure_handling')}")
+            st.markdown(f"**SLA Impact:** {block.get('sla_impact')}")
+            st.markdown(f"**Analyst Notes:** {block.get('analyst_notes')}")
 
     # -------------------------------------------------
-    # PLAYBOOK FLOW
+    # FLOW
     # -------------------------------------------------
     st.header("🧭 Playbook Flow")
     flow = " → ".join(b["block_name"].replace("_", " ") for b in blocks)
@@ -162,4 +182,5 @@ if generate:
     # -------------------------------------------------
     st.header("📄 Playbook Documentation")
     st.markdown(documentation or "_No documentation returned_")
+
 
