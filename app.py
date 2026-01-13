@@ -1,6 +1,5 @@
 import os
 import json
-import re
 import streamlit as st
 from google import genai
 
@@ -19,20 +18,19 @@ st.caption("Built by Srinivas")
 # -------------------------------------------------
 API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
-    st.error("GEMINI_API_KEY not set in Streamlit secrets")
+    st.error("GEMINI_API_KEY not set")
     st.stop()
 
 client = genai.Client(api_key=API_KEY)
 
 # -------------------------------------------------
-# PROMPT
+# PROMPT (STRICT JSON, INTERNAL ONLY)
 # -------------------------------------------------
 def build_prompt(use_case: str) -> str:
     return f"""
-You MUST return ONLY valid JSON.
-Do NOT use markdown.
-Do NOT wrap in ```json.
-Do NOT add commentary.
+You are a SOAR playbook generation engine.
+
+Return ONLY valid JSON. No markdown. No explanations.
 
 Schema:
 {{
@@ -55,140 +53,185 @@ Use case:
 """
 
 # -------------------------------------------------
-# ROBUST JSON EXTRACTOR
+# UI HELPERS
 # -------------------------------------------------
-def extract_json(text: str):
-    if not text:
-        return None
+def render_block_card(title, purpose, color):
+    st.markdown(
+        f"""
+        <div style="
+            min-width:260px;
+            padding:14px;
+            border-radius:14px;
+            background:{color};
+            color:white;
+            font-weight:600;
+            text-align:center;
+            box-shadow:0 6px 14px rgba(0,0,0,0.18);
+        ">
+            {title}<br/>
+            <span style="font-size:12px;font-weight:400;">
+                {purpose}
+            </span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-    # Remove markdown code fences if present
-    text = text.strip()
-    text = re.sub(r"^```json", "", text, flags=re.IGNORECASE).strip()
-    text = re.sub(r"^```", "", text).strip()
-    text = re.sub(r"```$", "", text).strip()
-
-    # Extract JSON object
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        return None
-
-    try:
-        return json.loads(match.group())
-    except json.JSONDecodeError:
-        return None
+def arrow():
+    st.markdown(
+        "<div style='font-size:28px;color:#6b7280;'>→</div>",
+        unsafe_allow_html=True
+    )
 
 # -------------------------------------------------
-# UI
+# MAIN UI
 # -------------------------------------------------
 st.title("🛡️ SOAR Playbook Generator")
 
-use_case = st.text_area(
+use_case_input = st.text_area(
     "SOAR Use Case Description",
-    height=240
+    height=220
 )
 
-generate = st.button("Generate Playbook")
+if st.button("Generate Playbook"):
 
-if not generate:
-    st.stop()
+    if not use_case_input.strip():
+        st.warning("Please enter a use case.")
+        st.stop()
 
-# -------------------------------------------------
-# MODEL CALL
-# -------------------------------------------------
-with st.spinner("Generating SOAR playbook..."):
-    response = client.models.generate_content(
-        model="models/gemini-2.5-flash",
-        contents=build_prompt(use_case)
+    with st.spinner("Generating playbook..."):
+        response = client.models.generate_content(
+            model="models/gemini-2.5-flash",
+            contents=build_prompt(use_case_input)
+        )
+
+    try:
+        data = json.loads(response.text)
+        blocks = data["blocks"]
+        documentation = data["documentation"]
+    except Exception:
+        st.error("Model did not return valid JSON")
+        st.text(response.text)
+        st.stop()
+
+    # -------------------------------------------------
+    # TEXT PLAYBOOK (CLIENT FRIENDLY)
+    # -------------------------------------------------
+    st.success("Playbook generated successfully")
+
+    st.header("🧩 Playbook Steps")
+
+    for i, b in enumerate(blocks, start=1):
+        with st.expander(f"Step {i}: {b['block_name']}"):
+            st.markdown(f"**Purpose:** {b['purpose']}")
+            st.markdown(f"**Inputs:** {', '.join(b['inputs'])}")
+            st.markdown(f"**Outputs:** {', '.join(b['outputs'])}")
+            st.markdown(f"**SLA Impact:** {b['sla_impact']}")
+            st.markdown(f"**Notes:** {b['analyst_notes']}")
+
+    # -------------------------------------------------
+    # GRAPHICAL FLOW (REAL SOAR STYLE)
+    # -------------------------------------------------
+    st.header("🔗 SOAR Flow (Graphical)")
+
+    st.markdown(
+        "<div style='display:flex;gap:18px;align-items:center;overflow-x:auto;'>",
+        unsafe_allow_html=True
     )
-    raw_output = response.text
 
-data = extract_json(raw_output)
+    # Trigger
+    render_block_card(
+        "Trigger: SIEM Alert Ingestion",
+        "Brute force success detected",
+        "#0f766e"
+    )
+    arrow()
 
-if not data:
-    st.error("Model returned output but JSON could not be parsed")
-    st.code(raw_output)
-    st.stop()
+    # Enrichment
+    render_block_card(
+        "Enrich User Context",
+        "Azure AD, MFA, role, geo",
+        "#15803d"
+    )
+    arrow()
 
-blocks = data.get("blocks", [])
-documentation = data.get("documentation", "")
+    # Threat Intel
+    render_block_card(
+        "IP Threat Intelligence",
+        "Reputation, TOR, VPN",
+        "#374151"
+    )
+    arrow()
 
-# -------------------------------------------------
-# TEXT BLOCKS
-# -------------------------------------------------
-st.success("Playbook generated successfully")
+    # Decision Node
+    render_block_card(
+        "Decision: Compromise Confidence?",
+        "Aggregate all signals",
+        "#d97706"
+    )
 
-st.header("🧩 Playbook Blocks")
-for idx, block in enumerate(blocks, start=1):
-    with st.expander(f"Block {idx}: {block['block_name']}"):
-        st.json(block)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-# -------------------------------------------------
-# GRAPHICAL SOAR FLOW (NON-LINEAR)
-# -------------------------------------------------
-st.header("🔗 SOAR Flow (Graphical)")
+    # -------------------------------------------------
+    # BRANCHING (NOT ONE-DIMENSIONAL)
+    # -------------------------------------------------
+    st.markdown(
+        "<div style='display:flex;gap:80px;margin-top:30px;'>",
+        unsafe_allow_html=True
+    )
 
-flow_html = """
-<div style="display:flex;flex-direction:column;align-items:center;gap:22px">
+    # HIGH CONFIDENCE PATH
+    st.markdown("<div>", unsafe_allow_html=True)
+    render_block_card(
+        "HIGH Confidence",
+        "Automated containment",
+        "#b91c1c"
+    )
+    arrow()
+    render_block_card(
+        "Disable Account + Block IP",
+        "Immediate containment",
+        "#7f1d1d"
+    )
+    arrow()
+    render_block_card(
+        "Preserve Evidence",
+        "Logs & forensic data",
+        "#1f2937"
+    )
+    arrow()
+    render_block_card(
+        "Notify SOC (L2)",
+        "Incident created",
+        "#065f46"
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-<div style="background:#0f766e;color:white;padding:14px 26px;border-radius:14px;font-weight:600">
-Trigger: Brute Force Success Alert
-</div>
+    # LOW / MEDIUM CONFIDENCE PATH
+    st.markdown("<div>", unsafe_allow_html=True)
+    render_block_card(
+        "LOW / MEDIUM Confidence",
+        "Manual review",
+        "#2563eb"
+    )
+    arrow()
+    render_block_card(
+        "L1 Investigation",
+        "Validate legitimacy",
+        "#1e40af"
+    )
+    arrow()
+    render_block_card(
+        "Close or Escalate",
+        "Based on findings",
+        "#0f172a"
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-<div style="font-size:28px">↓</div>
+    st.markdown("</div>", unsafe_allow_html=True)
 
-<div style="background:#15803d;color:white;padding:14px 26px;border-radius:14px;font-weight:600">
-Enrichment: User + IP Context
-</div>
-
-<div style="font-size:28px">↓</div>
-
-<div style="background:#1e293b;color:white;padding:14px 26px;border-radius:14px;font-weight:600">
-Correlation: Azure AD · EDR · Firewall
-</div>
-
-<div style="font-size:28px">↓</div>
-
-<div style="background:#d97706;color:white;padding:14px 26px;border-radius:14px;font-weight:600">
-Decision: Compromise Confidence
-</div>
-
-<div style="display:flex;gap:90px;margin-top:10px">
-
-  <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
-    <div style="font-size:24px">↙</div>
-    <div style="background:#b91c1c;color:white;padding:14px 22px;border-radius:14px;font-weight:600">
-      HIGH Confidence
-    </div>
-    <div style="background:#7f1d1d;color:white;padding:12px 18px;border-radius:12px">
-      Disable User<br>Block IP<br>Revoke Sessions
-    </div>
-  </div>
-
-  <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
-    <div style="font-size:24px">↘</div>
-    <div style="background:#2563eb;color:white;padding:14px 22px;border-radius:14px;font-weight:600">
-      MEDIUM / LOW
-    </div>
-    <div style="background:#1e40af;color:white;padding:12px 18px;border-radius:12px">
-      L1/L2 Review<br>Manual Validation
-    </div>
-  </div>
-
-</div>
-
-<div style="font-size:28px">↓</div>
-
-<div style="background:#334155;color:white;padding:14px 26px;border-radius:14px;font-weight:600">
-Preserve Evidence · Create Incident · Notify SOC
-</div>
-
-</div>
-"""
-
-st.markdown(flow_html, unsafe_allow_html=True)
-
-# -------------------------------------------------
-# DOCUMENTATION
-# -------------------------------------------------
-st.header("📄 Playbook Documentation")
-st.write(documentation)
+    # -------------------------------------------------
+    # DOCUMENTATION
+    # -------------------------------------------------
+    st.header("📄 Playbook Documentation")
+    st.markdown(documentation)
