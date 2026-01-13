@@ -5,30 +5,26 @@ import streamlit as st
 from google import genai
 
 # -------------------------------------------------
-# PAGE CONFIG
+# CONFIG
 # -------------------------------------------------
 st.set_page_config(page_title="SOAR Playbook Generator", layout="wide")
 st.caption("Built by Srinivas")
 
-# -------------------------------------------------
-# API CONFIG
-# -------------------------------------------------
 API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
-    st.error("GEMINI_API_KEY not set in Streamlit Secrets.")
+    st.error("GEMINI_API_KEY not set. Please set it and restart.")
     st.stop()
 
 client = genai.Client(api_key=API_KEY)
 
 # -------------------------------------------------
-# PROMPT
+# HELPERS
 # -------------------------------------------------
 def build_prompt(use_case: str) -> str:
     return f"""
-You are a SOAR Playbook Generation Engine.
+You are a SOAR playbook generation engine.
 
-Return STRICT JSON ONLY.
-No explanations. No markdown. No extra text.
+Return STRICT JSON only.
 
 Schema:
 {{
@@ -46,43 +42,18 @@ Schema:
   "documentation": ""
 }}
 
-Rules:
-- FIRST block MUST be a Trigger block
-- Blocks must be linear (no branching yet)
-- Use SOC / SOAR terminology
-
 Use case:
 {use_case}
 """
 
-# -------------------------------------------------
-# PARSER
-# -------------------------------------------------
 def extract_json(text: str):
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        return None
     try:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        return json.loads(match.group()) if match else None
+        return json.loads(match.group())
     except Exception:
         return None
-
-# -------------------------------------------------
-# COLOR LOGIC
-# -------------------------------------------------
-def block_color(name: str) -> str:
-    name = name.lower()
-    if "trigger" in name:
-        return "#0f766e"   # teal
-    if any(x in name for x in ["enrich", "context", "lookup", "query"]):
-        return "#15803d"   # green
-    if any(x in name for x in ["analy", "validate", "check"]):
-        return "#1d4ed8"   # blue
-    if any(x in name for x in ["decision", "confidence", "evaluate"]):
-        return "#c2410c"   # orange
-    if any(x in name for x in ["contain", "reset", "disable", "block"]):
-        return "#b91c1c"   # red
-    if any(x in name for x in ["notify", "document", "update"]):
-        return "#6d28d9"   # purple
-    return "#374151"      # gray
 
 # -------------------------------------------------
 # UI
@@ -108,47 +79,43 @@ if generate:
     with st.spinner("Generating playbook..."):
         response = client.models.generate_content(
             model="models/gemini-2.5-flash",
-            contents=build_prompt(use_case_input)
+            contents=build_prompt(use_case_input),
         )
         raw_output = response.text
 
-    data = extract_json(raw_output)
+    parsed = extract_json(raw_output)
 
-    if not data or "blocks" not in data:
-        st.error("No valid playbook JSON returned.")
+    if not parsed or not parsed.get("blocks"):
+        st.error("No valid playbook blocks returned.")
         st.text_area("Raw AI Output", raw_output, height=300)
         st.stop()
 
-    blocks = data["blocks"]
-    documentation = data.get("documentation", "")
+    blocks = parsed["blocks"]
+    documentation = parsed.get("documentation", "")
 
     st.success("Playbook generated successfully")
 
     # -------------------------------------------------
     # TEXT BLOCKS
     # -------------------------------------------------
-    st.header("🧩 Playbook Blocks (Text)")
+    st.header("🧩 Playbook Blocks")
 
-    for i, block in enumerate(blocks, start=1):
-        with st.expander(f"Block {i}: {block['block_name']}"):
-            st.markdown(f"**Purpose:** {block['purpose']}")
-            st.markdown(f"**Inputs:** {', '.join(block['inputs'])}")
-            st.markdown(f"**Outputs:** {', '.join(block['outputs'])}")
-            st.markdown(f"**Failure Handling:** {block['failure_handling']}")
-            st.markdown(f"**SLA Impact:** {block['sla_impact']}")
-            st.markdown(f"**Analyst Notes:** {block['analyst_notes']}")
+    for i, b in enumerate(blocks, start=1):
+        with st.expander(f"Block {i}: {b['block_name']}"):
+            st.markdown(f"**Purpose:** {b['purpose']}")
+            st.markdown(f"**Inputs:** {', '.join(b['inputs'])}")
+            st.markdown(f"**Outputs:** {', '.join(b['outputs'])}")
+            st.markdown(f"**Failure Handling:** {b['failure_handling']}")
+            st.markdown(f"**SLA Impact:** {b['sla_impact']}")
+            st.markdown(f"**Analyst Notes:** {b['analyst_notes']}")
 
     # -------------------------------------------------
-    # GRAPHICAL FLOW (REAL RENDER)
+    # GRAPHICAL SOAR FLOW (NON-LINEAR)
     # -------------------------------------------------
     st.header("🔗 SOAR Flow (Graphical)")
 
-    flow_html = "<div style='display:flex; align-items:center; gap:16px; overflow-x:auto; padding:12px;'>"
-
-    for i, block in enumerate(blocks):
-        color = block_color(block["block_name"])
-
-        flow_html += f"""
+    def box(label, color):
+        return f"""
         <div style="
             min-width:260px;
             padding:14px;
@@ -157,22 +124,69 @@ if generate:
             color:white;
             font-weight:600;
             text-align:center;
-            box-shadow:0 4px 10px rgba(0,0,0,0.15);
+            box-shadow:0 6px 14px rgba(0,0,0,0.18);
         ">
-            {block['block_name']}
+        {label}
         </div>
         """
 
-        if i < len(blocks) - 1:
-            flow_html += "<div style='font-size:28px; color:#6b7280;'>➜</div>"
+    arrow = "<div style='font-size:28px;margin:0 12px;'>→</div>"
+    down = "<div style='font-size:28px;'>↓</div>"
 
-    flow_html += "</div>"
+    html = f"""
+    <div style="overflow-x:auto;padding:20px">
 
-    # 🔴 THIS is the critical fix
-    st.markdown(flow_html, unsafe_allow_html=True)
+      <!-- Trigger -->
+      <div style="display:flex;justify-content:center;margin-bottom:20px">
+        {box("Trigger: SIEM Alert Ingestion", "#0f766e")}
+      </div>
+
+      <div style="display:flex;justify-content:center;margin-bottom:20px">{down}</div>
+
+      <!-- Enrichment Phase -->
+      <div style="display:flex;justify-content:center;gap:20px;margin-bottom:30px">
+        {box("Enrich User Context (Azure AD)", "#15803d")}
+        {box("IP Threat Intelligence", "#15803d")}
+        {box("Endpoint Context (EDR)", "#15803d")}
+      </div>
+
+      <div style="display:flex;justify-content:center;margin-bottom:20px">{down}</div>
+
+      <!-- Decision -->
+      <div style="display:flex;justify-content:center;margin-bottom:30px">
+        {box("Decision: Compromise Confidence?", "#d97706")}
+      </div>
+
+      <!-- Branches -->
+      <div style="display:flex;justify-content:space-around;margin-bottom:30px">
+
+        <div style="display:flex;flex-direction:column;align-items:center;gap:14px">
+          {box("HIGH Confidence", "#b91c1c")}
+          {box("Disable User & Block IP", "#b91c1c")}
+          {box("Preserve Evidence", "#7f1d1d")}
+          {box("Notify SOC + Manager", "#7f1d1d")}
+        </div>
+
+        <div style="display:flex;flex-direction:column;align-items:center;gap:14px">
+          {box("MEDIUM Confidence", "#7c3aed")}
+          {box("Escalate to L2 Analyst", "#6d28d9")}
+          {box("Request User Validation", "#6d28d9")}
+        </div>
+
+        <div style="display:flex;flex-direction:column;align-items:center;gap:14px">
+          {box("LOW Confidence", "#374151")}
+          {box("Monitor Activity", "#4b5563")}
+          {box("Auto-Close if Clean", "#4b5563")}
+        </div>
+
+      </div>
+    </div>
+    """
+
+    st.markdown(html, unsafe_allow_html=True)
 
     # -------------------------------------------------
     # DOCUMENTATION
     # -------------------------------------------------
     st.header("📄 Playbook Documentation")
-    st.markdown(documentation or "_No documentation provided_")
+    st.markdown(documentation or "_No documentation returned_")
