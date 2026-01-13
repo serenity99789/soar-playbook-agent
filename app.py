@@ -119,7 +119,7 @@ if st.button("Generate Playbook"):
         st.stop()
 
     # -------------------------------------------------
-    # TEXTUAL STEPS (NO JSON)
+    # TEXTUAL STEPS
     # -------------------------------------------------
     st.success("Playbook generated")
 
@@ -137,7 +137,6 @@ if st.button("Generate Playbook"):
     # -------------------------------------------------
     st.header("🔗 SOAR Flow (Graphical)")
 
-    # Top flow
     st.markdown("<div style='display:flex;align-items:center;flex-wrap:wrap;'>", unsafe_allow_html=True)
     box("Trigger", "SIEM Brute Force", "#0f766e")
     arrow()
@@ -150,10 +149,8 @@ if st.button("Generate Playbook"):
 
     st.markdown("<br/>", unsafe_allow_html=True)
 
-    # Branches
     st.markdown("<div style='display:flex;gap:80px;flex-wrap:wrap;'>", unsafe_allow_html=True)
 
-    # HIGH
     st.markdown("<div>", unsafe_allow_html=True)
     box("HIGH", "Auto Contain", "#b91c1c")
     arrow()
@@ -164,7 +161,6 @@ if st.button("Generate Playbook"):
     box("Notify L2", "Incident", "#065f46")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # LOW / MED
     st.markdown("<div>", unsafe_allow_html=True)
     box("LOW / MED", "Manual Review", "#2563eb")
     arrow()
@@ -180,3 +176,51 @@ if st.button("Generate Playbook"):
     # -------------------------------------------------
     st.header("📄 Playbook Documentation")
     st.markdown(documentation)
+
+    # -------------------------------------------------
+    # EXTERNAL FLOWCHART PROMPT (NEW)
+    # -------------------------------------------------
+    st.header("🧠 Prompt for External SOAR / Flowchart Builders")
+
+    step_names = [b["block_name"] for b in blocks]
+
+    flow_prompt = f"""
+Create a decision-aware SOAR playbook flowchart for the following security use case.
+
+Use Case:
+{use_case}
+
+Trigger:
+- Security alert detected by SIEM indicating the start of the playbook.
+
+Primary Investigation Flow:
+""" + "\n".join([f"- {name}" for name in step_names]) + """
+
+Decision Logic:
+- Evaluate gathered signals and calculate compromise confidence.
+
+If HIGH confidence:
+- Perform automated containment actions.
+- Disable or revoke the user account.
+- Block malicious IPs if applicable.
+- Preserve all relevant evidence.
+- Create incident and notify L2 SOC.
+
+If LOW or MEDIUM confidence:
+- Assign to L1 SOC for manual validation.
+- Escalate to L2 if risk increases or close as false positive.
+
+End State:
+- Incident fully documented with actions taken and next steps.
+
+Visualize this as a SOAR playbook with:
+- Clear decision nodes
+- Parallel branches
+- Labeled actions
+"""
+
+    st.text_area(
+        "Copy and paste into an AI flowchart or SOAR playbook builder",
+        flow_prompt.strip(),
+        height=320
+    )
