@@ -52,11 +52,6 @@ If you cannot generate valid JSON, return:
   "documentation": "Generation failed"
 }
 
-SECTION B: DOCUMENTATION_TEXT
-Clear, professional SOC-ready documentation.
-
-Use case:
-{use_case}
 """
 
 def extract_blocks_json(text: str):
