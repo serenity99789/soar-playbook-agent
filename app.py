@@ -56,32 +56,36 @@ def parse_model_output(text: str):
     return json.loads(cleaned)
 
 # -------------------------------------------------
-# UI HELPERS
+# UI ELEMENTS
 # -------------------------------------------------
 def box(title, subtitle, color):
-    return f"""
-    <div style="
-        padding:12px 18px;
-        border-radius:14px;
-        background:{color};
-        color:white;
-        font-weight:600;
-        text-align:center;
-        white-space:nowrap;
-        box-shadow:0 6px 14px rgba(0,0,0,0.18);
-    ">
-        {title}<br/>
-        <span style="font-size:12px;font-weight:400;">
-            {subtitle}
-        </span>
-    </div>
-    """
+    st.markdown(
+        f"""
+        <div style="
+            display:inline-block;
+            padding:12px 18px;
+            border-radius:14px;
+            background:{color};
+            color:white;
+            font-weight:600;
+            text-align:center;
+            white-space:nowrap;
+            box-shadow:0 6px 14px rgba(0,0,0,0.18);
+        ">
+            {title}<br/>
+            <span style="font-size:12px;font-weight:400;">
+                {subtitle}
+            </span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-def arrow_down():
-    return "<div style='font-size:26px;text-align:center;'>↓</div>"
-
-def arrow_right():
-    return "<div style='font-size:26px;text-align:center;'>→</div>"
+def arrow():
+    st.markdown(
+        "<span style='font-size:26px;margin:0 10px;'>→</span>",
+        unsafe_allow_html=True
+    )
 
 # -------------------------------------------------
 # MAIN UI
@@ -108,119 +112,68 @@ if st.button("Generate Playbook"):
 
     try:
         data = parse_model_output(response.text)
+        blocks = data["blocks"]
         documentation = data["documentation"]
     except Exception:
         st.error("Model output could not be parsed.")
         st.stop()
 
     # -------------------------------------------------
-    # GRAPHICAL FLOW (GRID-BASED)
+    # TEXTUAL STEPS (NO JSON)
+    # -------------------------------------------------
+    st.success("Playbook generated")
+
+    st.header("🧩 Playbook Steps")
+    for i, block in enumerate(blocks, start=1):
+        with st.expander(f"Step {i}: {block['block_name']}"):
+            st.markdown(f"**Purpose:** {block['purpose']}")
+            st.markdown(f"**Inputs:** {', '.join(block['inputs'])}")
+            st.markdown(f"**Outputs:** {', '.join(block['outputs'])}")
+            st.markdown(f"**SLA Impact:** {block['sla_impact']}")
+            st.markdown(f"**Analyst Notes:** {block['analyst_notes']}")
+
+    # -------------------------------------------------
+    # GRAPHICAL FLOW
     # -------------------------------------------------
     st.header("🔗 SOAR Flow (Graphical)")
 
-    flow_html = f"""
-    <div style="
-        display:grid;
-        grid-template-columns: 1fr 1fr 1fr;
-        grid-template-rows: auto auto auto auto;
-        gap:30px;
-        justify-items:center;
-        align-items:center;
-        margin-top:20px;
-    ">
+    # Top flow
+    st.markdown("<div style='display:flex;align-items:center;flex-wrap:wrap;'>", unsafe_allow_html=True)
+    box("Trigger", "SIEM Brute Force", "#0f766e")
+    arrow()
+    box("Enrichment", "Azure AD + IP", "#15803d")
+    arrow()
+    box("Threat Intel", "IP Reputation", "#374151")
+    arrow()
+    box("Decision", "Confidence?", "#d97706")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        <!-- ROW 1 -->
-        <div style="grid-column:2;">
-            {box("Trigger", "SIEM Brute Force", "#0f766e")}
-        </div>
+    st.markdown("<br/>", unsafe_allow_html=True)
 
-        <!-- ARROW -->
-        <div style="grid-column:2;">
-            {arrow_down()}
-        </div>
+    # Branches
+    st.markdown("<div style='display:flex;gap:80px;flex-wrap:wrap;'>", unsafe_allow_html=True)
 
-        <!-- ROW 2 -->
-        <div style="grid-column:2;">
-            {box("Enrichment", "Azure AD + IP", "#15803d")}
-        </div>
+    # HIGH
+    st.markdown("<div>", unsafe_allow_html=True)
+    box("HIGH", "Auto Contain", "#b91c1c")
+    arrow()
+    box("Account Actions", "Disable / Revoke", "#7f1d1d")
+    arrow()
+    box("Preserve Evidence", "Logs + EDR", "#1f2937")
+    arrow()
+    box("Notify L2", "Incident", "#065f46")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        <!-- ARROW -->
-        <div style="grid-column:2;">
-            {arrow_down()}
-        </div>
+    # LOW / MED
+    st.markdown("<div>", unsafe_allow_html=True)
+    box("LOW / MED", "Manual Review", "#2563eb")
+    arrow()
+    box("L1 Analysis", "Validate", "#1e40af")
+    arrow()
+    box("Close / Escalate", "Decision", "#0f172a")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        <!-- ROW 3 -->
-        <div style="grid-column:2;">
-            {box("Threat Intel", "IP Reputation", "#374151")}
-        </div>
-
-        <!-- ARROW -->
-        <div style="grid-column:2;">
-            {arrow_down()}
-        </div>
-
-        <!-- DECISION -->
-        <div style="grid-column:2;">
-            {box("Decision", "Compromise Confidence?", "#d97706")}
-        </div>
-
-        <!-- BRANCH ARROWS -->
-        <div style="grid-column:1;">
-            {arrow_down()}
-        </div>
-
-        <div style="grid-column:3;">
-            {arrow_down()}
-        </div>
-
-        <!-- LEFT BRANCH (HIGH) -->
-        <div style="grid-column:1;">
-            {box("HIGH", "Auto Containment", "#b91c1c")}
-        </div>
-
-        <!-- RIGHT BRANCH (LOW/MED) -->
-        <div style="grid-column:3;">
-            {box("LOW / MED", "Manual Review", "#2563eb")}
-        </div>
-
-        <!-- LEFT FLOW -->
-        <div style="grid-column:1;">
-            {arrow_down()}
-        </div>
-
-        <div style="grid-column:3;">
-            {arrow_down()}
-        </div>
-
-        <div style="grid-column:1;">
-            {box("Account Actions", "Disable / Revoke", "#7f1d1d")}
-        </div>
-
-        <div style="grid-column:3;">
-            {box("L1 Analysis", "Validate & Decide", "#1e40af")}
-        </div>
-
-        <!-- FINAL -->
-        <div style="grid-column:1;">
-            {arrow_down()}
-        </div>
-
-        <div style="grid-column:3;">
-            {arrow_down()}
-        </div>
-
-        <div style="grid-column:1;">
-            {box("Preserve Evidence", "Logs + EDR", "#1f2937")}
-        </div>
-
-        <div style="grid-column:3;">
-            {box("Close / Escalate", "Next Steps", "#0f172a")}
-        </div>
-
-    </div>
-    """
-
-    st.markdown(flow_html, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     # -------------------------------------------------
     # DOCUMENTATION
