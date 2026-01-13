@@ -48,7 +48,7 @@ Schema:
 
 Rules:
 - FIRST block MUST be a Trigger block
-- Blocks must be sequential and logical
+- Blocks must be linear (no branching yet)
 - Use SOC / SOAR terminology
 
 Use case:
@@ -56,7 +56,7 @@ Use case:
 """
 
 # -------------------------------------------------
-# PARSERS
+# PARSER
 # -------------------------------------------------
 def extract_json(text: str):
     try:
@@ -68,23 +68,21 @@ def extract_json(text: str):
 # -------------------------------------------------
 # COLOR LOGIC
 # -------------------------------------------------
-def block_color(block_name: str) -> str:
-    name = block_name.lower()
-
+def block_color(name: str) -> str:
+    name = name.lower()
     if "trigger" in name:
-        return "#0f766e"  # teal
+        return "#0f766e"   # teal
     if any(x in name for x in ["enrich", "context", "lookup", "query"]):
-        return "#15803d"  # green
-    if any(x in name for x in ["analy", "validate", "check", "correlate"]):
-        return "#1d4ed8"  # blue
+        return "#15803d"   # green
+    if any(x in name for x in ["analy", "validate", "check"]):
+        return "#1d4ed8"   # blue
     if any(x in name for x in ["decision", "confidence", "evaluate"]):
-        return "#c2410c"  # orange
+        return "#c2410c"   # orange
     if any(x in name for x in ["contain", "reset", "disable", "block"]):
-        return "#b91c1c"  # red
+        return "#b91c1c"   # red
     if any(x in name for x in ["notify", "document", "update"]):
-        return "#6d28d9"  # purple
-
-    return "#374151"  # default gray
+        return "#6d28d9"   # purple
+    return "#374151"      # gray
 
 # -------------------------------------------------
 # UI
@@ -127,7 +125,7 @@ if generate:
     st.success("Playbook generated successfully")
 
     # -------------------------------------------------
-    # TEXT BLOCK VIEW
+    # TEXT BLOCKS
     # -------------------------------------------------
     st.header("🧩 Playbook Blocks (Text)")
 
@@ -141,21 +139,13 @@ if generate:
             st.markdown(f"**Analyst Notes:** {block['analyst_notes']}")
 
     # -------------------------------------------------
-    # GRAPHICAL FLOW (HORIZONTAL)
+    # GRAPHICAL FLOW (REAL RENDER)
     # -------------------------------------------------
     st.header("🔗 SOAR Flow (Graphical)")
 
-    flow_html = """
-    <div style="
-        display:flex;
-        align-items:center;
-        gap:16px;
-        overflow-x:auto;
-        padding:10px;
-    ">
-    """
+    flow_html = "<div style='display:flex; align-items:center; gap:16px; overflow-x:auto; padding:12px;'>"
 
-    for idx, block in enumerate(blocks):
+    for i, block in enumerate(blocks):
         color = block_color(block["block_name"])
 
         flow_html += f"""
@@ -173,13 +163,12 @@ if generate:
         </div>
         """
 
-        if idx < len(blocks) - 1:
-            flow_html += """
-            <div style="font-size:28px; color:#6b7280;">➜</div>
-            """
+        if i < len(blocks) - 1:
+            flow_html += "<div style='font-size:28px; color:#6b7280;'>➜</div>"
 
     flow_html += "</div>"
 
+    # 🔴 THIS is the critical fix
     st.markdown(flow_html, unsafe_allow_html=True)
 
     # -------------------------------------------------
