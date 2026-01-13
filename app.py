@@ -5,14 +5,17 @@ import streamlit as st
 from google import genai
 
 # -------------------------------------------------
-# CONFIG
+# PAGE CONFIG
 # -------------------------------------------------
 st.set_page_config(page_title="SOAR Playbook Generator", layout="wide")
 st.caption("Built by Srinivas")
 
+# -------------------------------------------------
+# API CONFIG
+# -------------------------------------------------
 API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
-    st.error("GEMINI_API_KEY not set. Please set it in Streamlit Secrets.")
+    st.error("GEMINI_API_KEY not set in Streamlit Secrets.")
     st.stop()
 
 client = genai.Client(api_key=API_KEY)
@@ -24,13 +27,10 @@ def build_prompt(use_case: str) -> str:
     return f"""
 You are a SOAR Playbook Generation Engine.
 
-You MUST return STRICT VALID JSON ONLY.
-NO markdown.
-NO explanations.
-NO text outside JSON.
+Return STRICT JSON ONLY.
+No explanations. No markdown. No extra text.
 
-The JSON schema MUST be EXACTLY:
-
+Schema:
 {{
   "blocks": [
     {{
@@ -47,10 +47,9 @@ The JSON schema MUST be EXACTLY:
 }}
 
 Rules:
-- The FIRST block MUST be a Trigger block.
-- The flow MUST be linear (top to bottom).
-- Use SOC / SOAR terminology.
-- Assume enterprise environment.
+- FIRST block MUST be a Trigger block
+- Blocks must be sequential and logical
+- Use SOC / SOAR terminology
 
 Use case:
 {use_case}
@@ -62,28 +61,30 @@ Use case:
 def extract_json(text: str):
     try:
         match = re.search(r"\{.*\}", text, re.DOTALL)
-        if not match:
-            return None
-        return json.loads(match.group())
+        return json.loads(match.group()) if match else None
     except Exception:
         return None
 
 # -------------------------------------------------
-# FLOWCHART (CLOUD SAFE)
+# COLOR LOGIC
 # -------------------------------------------------
-def build_flowchart_dot(blocks):
-    dot = "digraph SOAR {\n"
-    dot += "rankdir=TB;\n"
-    dot += "node [shape=box style=rounded fontname=Arial];\n"
+def block_color(block_name: str) -> str:
+    name = block_name.lower()
 
-    for i, block in enumerate(blocks):
-        label = f"{block['block_name']}\\n\\n{block['purpose']}"
-        dot += f'node{i} [label="{label}"];\n'
-        if i > 0:
-            dot += f"node{i-1} -> node{i};\n"
+    if "trigger" in name:
+        return "#0f766e"  # teal
+    if any(x in name for x in ["enrich", "context", "lookup", "query"]):
+        return "#15803d"  # green
+    if any(x in name for x in ["analy", "validate", "check", "correlate"]):
+        return "#1d4ed8"  # blue
+    if any(x in name for x in ["decision", "confidence", "evaluate"]):
+        return "#c2410c"  # orange
+    if any(x in name for x in ["contain", "reset", "disable", "block"]):
+        return "#b91c1c"  # red
+    if any(x in name for x in ["notify", "document", "update"]):
+        return "#6d28d9"  # purple
 
-    dot += "}"
-    return dot
+    return "#374151"  # default gray
 
 # -------------------------------------------------
 # UI
@@ -93,7 +94,7 @@ st.title("🛡️ SOAR Playbook Generator")
 use_case_input = st.text_area(
     "SOAR Use Case Description",
     height=220,
-    placeholder="Describe the security scenario..."
+    placeholder="Account Compromise – Brute Force Success"
 )
 
 generate = st.button("Generate Playbook")
@@ -109,7 +110,7 @@ if generate:
     with st.spinner("Generating playbook..."):
         response = client.models.generate_content(
             model="models/gemini-2.5-flash",
-            contents=build_prompt(use_case_input),
+            contents=build_prompt(use_case_input)
         )
         raw_output = response.text
 
@@ -126,9 +127,9 @@ if generate:
     st.success("Playbook generated successfully")
 
     # -------------------------------------------------
-    # BLOCKS (TEXT)
+    # TEXT BLOCK VIEW
     # -------------------------------------------------
-    st.header("🧩 Playbook Blocks")
+    st.header("🧩 Playbook Blocks (Text)")
 
     for i, block in enumerate(blocks, start=1):
         with st.expander(f"Block {i}: {block['block_name']}"):
@@ -140,12 +141,46 @@ if generate:
             st.markdown(f"**Analyst Notes:** {block['analyst_notes']}")
 
     # -------------------------------------------------
-    # FLOWCHART (GUI)
+    # GRAPHICAL FLOW (HORIZONTAL)
     # -------------------------------------------------
     st.header("🔗 SOAR Flow (Graphical)")
 
-    dot_flow = build_flowchart_dot(blocks)
-    st.graphviz_chart(dot_flow)
+    flow_html = """
+    <div style="
+        display:flex;
+        align-items:center;
+        gap:16px;
+        overflow-x:auto;
+        padding:10px;
+    ">
+    """
+
+    for idx, block in enumerate(blocks):
+        color = block_color(block["block_name"])
+
+        flow_html += f"""
+        <div style="
+            min-width:260px;
+            padding:14px;
+            border-radius:14px;
+            background:{color};
+            color:white;
+            font-weight:600;
+            text-align:center;
+            box-shadow:0 4px 10px rgba(0,0,0,0.15);
+        ">
+            {block['block_name']}
+        </div>
+        """
+
+        if idx < len(blocks) - 1:
+            flow_html += """
+            <div style="font-size:28px; color:#6b7280;">➜</div>
+            """
+
+    flow_html += "</div>"
+
+    st.markdown(flow_html, unsafe_allow_html=True)
 
     # -------------------------------------------------
     # DOCUMENTATION
