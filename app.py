@@ -25,12 +25,8 @@ client = genai.Client(api_key=API_KEY)
 # -------------------------------------------------
 def build_prompt(use_case: str) -> str:
     return f"""
-You are a SOAR playbook generation engine.
-
 Return ONLY valid JSON.
-Do NOT use markdown.
-Do NOT use triple backticks.
-Do NOT include explanations.
+No markdown. No backticks.
 
 Schema:
 {{
@@ -60,19 +56,20 @@ def parse_model_output(text: str):
     return json.loads(cleaned)
 
 # -------------------------------------------------
-# UI COMPONENTS
+# UI ELEMENTS
 # -------------------------------------------------
-def render_box(title, subtitle, color):
+def box(title, subtitle, color):
     st.markdown(
         f"""
         <div style="
-            min-width:260px;
-            padding:14px;
+            display:inline-block;
+            padding:12px 18px;
             border-radius:14px;
             background:{color};
             color:white;
             font-weight:600;
             text-align:center;
+            white-space:nowrap;
             box-shadow:0 6px 14px rgba(0,0,0,0.18);
         ">
             {title}<br/>
@@ -85,14 +82,17 @@ def render_box(title, subtitle, color):
     )
 
 def arrow():
-    st.markdown("<div style='font-size:28px;color:#6b7280;'>→</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<span style='font-size:26px;margin:0 10px;'>→</span>",
+        unsafe_allow_html=True
+    )
 
 # -------------------------------------------------
 # MAIN UI
 # -------------------------------------------------
 st.title("🛡️ SOAR Playbook Generator")
 
-use_case_input = st.text_area(
+use_case = st.text_area(
     "SOAR Use Case Description",
     height=220,
     placeholder="Account Compromise – Brute Force Success"
@@ -100,14 +100,14 @@ use_case_input = st.text_area(
 
 if st.button("Generate Playbook"):
 
-    if not use_case_input.strip():
+    if not use_case.strip():
         st.warning("Please enter a use case.")
         st.stop()
 
     with st.spinner("Generating playbook..."):
         response = client.models.generate_content(
             model="models/gemini-2.5-flash",
-            contents=build_prompt(use_case_input)
+            contents=build_prompt(use_case)
         )
 
     try:
@@ -115,15 +115,15 @@ if st.button("Generate Playbook"):
         blocks = data["blocks"]
         documentation = data["documentation"]
     except Exception:
-        st.error("Model output could not be parsed safely.")
+        st.error("Model output could not be parsed.")
         st.stop()
 
     # -------------------------------------------------
-    # TEXTUAL PLAYBOOK (NO CODE SHOWN)
+    # TEXTUAL STEPS (NO JSON)
     # -------------------------------------------------
-    st.success("Playbook generated successfully")
+    st.success("Playbook generated")
 
-    st.header("🧩 Playbook Steps (Readable)")
+    st.header("🧩 Playbook Steps")
     for i, block in enumerate(blocks, start=1):
         with st.expander(f"Step {i}: {block['block_name']}"):
             st.markdown(f"**Purpose:** {block['purpose']}")
@@ -133,42 +133,44 @@ if st.button("Generate Playbook"):
             st.markdown(f"**Analyst Notes:** {block['analyst_notes']}")
 
     # -------------------------------------------------
-    # GRAPHICAL SOAR FLOW (DECISION AWARE, NON-LINEAR)
+    # GRAPHICAL FLOW
     # -------------------------------------------------
     st.header("🔗 SOAR Flow (Graphical)")
 
-    # Top linear flow
-    st.markdown("<div style='display:flex;gap:18px;align-items:center;overflow-x:auto;'>", unsafe_allow_html=True)
-    render_box("Trigger", "SIEM Brute Force Success", "#0f766e")
+    # Top flow
+    st.markdown("<div style='display:flex;align-items:center;flex-wrap:wrap;'>", unsafe_allow_html=True)
+    box("Trigger", "SIEM Brute Force", "#0f766e")
     arrow()
-    render_box("Enrichment", "Azure AD + IP Context", "#15803d")
+    box("Enrichment", "Azure AD + IP", "#15803d")
     arrow()
-    render_box("Threat Intel", "IP Reputation", "#374151")
+    box("Threat Intel", "IP Reputation", "#374151")
     arrow()
-    render_box("Decision", "Compromise Confidence?", "#d97706")
+    box("Decision", "Confidence?", "#d97706")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Branching paths
-    st.markdown("<div style='display:flex;gap:80px;margin-top:32px;'>", unsafe_allow_html=True)
+    st.markdown("<br/>", unsafe_allow_html=True)
 
-    # HIGH confidence path
+    # Branches
+    st.markdown("<div style='display:flex;gap:80px;flex-wrap:wrap;'>", unsafe_allow_html=True)
+
+    # HIGH
     st.markdown("<div>", unsafe_allow_html=True)
-    render_box("HIGH Confidence", "Auto Containment", "#b91c1c")
+    box("HIGH", "Auto Contain", "#b91c1c")
     arrow()
-    render_box("Disable Account", "Azure AD Actions", "#7f1d1d")
+    box("Account Actions", "Disable / Revoke", "#7f1d1d")
     arrow()
-    render_box("Preserve Evidence", "Logs + EDR", "#1f2937")
+    box("Preserve Evidence", "Logs + EDR", "#1f2937")
     arrow()
-    render_box("Notify L2 SOC", "Incident Created", "#065f46")
+    box("Notify L2", "Incident", "#065f46")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # LOW / MED confidence path
+    # LOW / MED
     st.markdown("<div>", unsafe_allow_html=True)
-    render_box("LOW / MEDIUM", "Manual Review", "#2563eb")
+    box("LOW / MED", "Manual Review", "#2563eb")
     arrow()
-    render_box("L1 Investigation", "Validate Activity", "#1e40af")
+    box("L1 Analysis", "Validate", "#1e40af")
     arrow()
-    render_box("Close or Escalate", "Based on Findings", "#0f172a")
+    box("Close / Escalate", "Decision", "#0f172a")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
