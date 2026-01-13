@@ -178,49 +178,58 @@ if st.button("Generate Playbook"):
     st.markdown(documentation)
 
     # -------------------------------------------------
-    # EXTERNAL FLOWCHART PROMPT (NEW)
+    # ENTERPRISE-GRADE FLOWCHART PROMPT
     # -------------------------------------------------
-    st.header("🧠 Prompt for External SOAR / Flowchart Builders")
+    st.header("🧠 AI Prompt for SOAR / Flowchart Builders")
 
-    step_names = [b["block_name"] for b in blocks]
+    block_lines = "\n".join(
+        [f"{i+1}. {b['block_name']} – {b['purpose']}" for i, b in enumerate(blocks)]
+    )
 
-    flow_prompt = f"""
-Create a decision-aware SOAR playbook flowchart for the following security use case.
+    enterprise_prompt = f"""
+You are designing a production-grade SOAR playbook for a Security Operations Center.
 
-Use Case:
+Playbook Name:
 {use_case}
 
 Trigger:
-- Security alert detected by SIEM indicating the start of the playbook.
+- SIEM alert indicating the start of the incident workflow.
 
-Primary Investigation Flow:
-""" + "\n".join([f"- {name}" for name in step_names]) + """
+Preconditions:
+- Alert severity evaluated
+- Required log sources available
+- SOAR platform authenticated to security tools
+
+Sequential Playbook Blocks:
+{block_lines}
+
+Decision Node:
+- Calculate compromise confidence using enrichment results, threat intelligence, and behavioral indicators.
 
 Decision Logic:
-- Evaluate gathered signals and calculate compromise confidence.
+IF confidence == HIGH:
+    - Automatically contain the threat
+    - Disable or revoke the affected account
+    - Block malicious IPs if applicable
+    - Preserve all forensic evidence
+    - Create incident and notify L2 SOC
 
-If HIGH confidence:
-- Perform automated containment actions.
-- Disable or revoke the user account.
-- Block malicious IPs if applicable.
-- Preserve all relevant evidence.
-- Create incident and notify L2 SOC.
+IF confidence == LOW or MEDIUM:
+    - Route incident to L1 SOC for manual validation
+    - Escalate to L2 if additional risk indicators appear
+    - Close as false positive if validated
 
-If LOW or MEDIUM confidence:
-- Assign to L1 SOC for manual validation.
-- Escalate to L2 if risk increases or close as false positive.
+End States:
+- Incident contained and documented
+- Evidence preserved
+- Analyst actions tracked
 
-End State:
-- Incident fully documented with actions taken and next steps.
-
-Visualize this as a SOAR playbook with:
-- Clear decision nodes
+Render this as a SOAR playbook diagram with:
+- Clear start trigger
+- Sequential blocks
+- Explicit decision gateways
 - Parallel branches
-- Labeled actions
+- L1 vs L2 analyst handoff
 """
 
-    st.text_area(
-        "Copy and paste into an AI flowchart or SOAR playbook builder",
-        flow_prompt.strip(),
-        height=320
-    )
+    st.code(enterprise_prompt.strip(), language=None)
