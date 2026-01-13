@@ -1,16 +1,13 @@
 import os
 import json
+import re
 import streamlit as st
 from google import genai
 
 # -------------------------------------------------
 # PAGE CONFIG
 # -------------------------------------------------
-st.set_page_config(
-    page_title="SOAR Playbook Generator",
-    layout="wide"
-)
-
+st.set_page_config(page_title="SOAR Playbook Generator", layout="wide")
 st.caption("Built by Srinivas")
 
 # -------------------------------------------------
@@ -24,13 +21,16 @@ if not API_KEY:
 client = genai.Client(api_key=API_KEY)
 
 # -------------------------------------------------
-# PROMPT (STRICT JSON, INTERNAL ONLY)
+# PROMPT
 # -------------------------------------------------
 def build_prompt(use_case: str) -> str:
     return f"""
 You are a SOAR playbook generation engine.
 
-Return ONLY valid JSON. No markdown. No explanations.
+Return ONLY valid JSON.
+NO markdown.
+NO backticks.
+NO explanations.
 
 Schema:
 {{
@@ -53,9 +53,17 @@ Use case:
 """
 
 # -------------------------------------------------
+# SAFE JSON PARSER (FIX)
+# -------------------------------------------------
+def safe_parse_json(text: str):
+    # Remove ```json and ``` if present
+    cleaned = re.sub(r"```json|```", "", text).strip()
+    return json.loads(cleaned)
+
+# -------------------------------------------------
 # UI HELPERS
 # -------------------------------------------------
-def render_block_card(title, purpose, color):
+def block(title, subtitle, color):
     st.markdown(
         f"""
         <div style="
@@ -70,7 +78,7 @@ def render_block_card(title, purpose, color):
         ">
             {title}<br/>
             <span style="font-size:12px;font-weight:400;">
-                {purpose}
+                {subtitle}
             </span>
         </div>
         """,
@@ -78,20 +86,14 @@ def render_block_card(title, purpose, color):
     )
 
 def arrow():
-    st.markdown(
-        "<div style='font-size:28px;color:#6b7280;'>→</div>",
-        unsafe_allow_html=True
-    )
+    st.markdown("<div style='font-size:28px;color:#6b7280;'>→</div>", unsafe_allow_html=True)
 
 # -------------------------------------------------
 # MAIN UI
 # -------------------------------------------------
 st.title("🛡️ SOAR Playbook Generator")
 
-use_case_input = st.text_area(
-    "SOAR Use Case Description",
-    height=220
-)
+use_case_input = st.text_area("SOAR Use Case Description", height=220)
 
 if st.button("Generate Playbook"):
 
@@ -106,21 +108,19 @@ if st.button("Generate Playbook"):
         )
 
     try:
-        data = json.loads(response.text)
+        data = safe_parse_json(response.text)
         blocks = data["blocks"]
         documentation = data["documentation"]
     except Exception:
-        st.error("Model did not return valid JSON")
-        st.text(response.text)
+        st.error("Model response could not be parsed safely")
         st.stop()
 
     # -------------------------------------------------
-    # TEXT PLAYBOOK (CLIENT FRIENDLY)
+    # TEXT PLAYBOOK (NO CODE SHOWN)
     # -------------------------------------------------
     st.success("Playbook generated successfully")
 
     st.header("🧩 Playbook Steps")
-
     for i, b in enumerate(blocks, start=1):
         with st.expander(f"Step {i}: {b['block_name']}"):
             st.markdown(f"**Purpose:** {b['purpose']}")
@@ -130,102 +130,42 @@ if st.button("Generate Playbook"):
             st.markdown(f"**Notes:** {b['analyst_notes']}")
 
     # -------------------------------------------------
-    # GRAPHICAL FLOW (REAL SOAR STYLE)
+    # GRAPHICAL FLOW (DECISION AWARE)
     # -------------------------------------------------
     st.header("🔗 SOAR Flow (Graphical)")
 
-    st.markdown(
-        "<div style='display:flex;gap:18px;align-items:center;overflow-x:auto;'>",
-        unsafe_allow_html=True
-    )
+    st.markdown("<div style='display:flex;gap:18px;align-items:center;overflow-x:auto;'>", unsafe_allow_html=True)
 
-    # Trigger
-    render_block_card(
-        "Trigger: SIEM Alert Ingestion",
-        "Brute force success detected",
-        "#0f766e"
-    )
+    block("Trigger: SIEM Alert", "Brute force success", "#0f766e")
     arrow()
-
-    # Enrichment
-    render_block_card(
-        "Enrich User Context",
-        "Azure AD, MFA, role, geo",
-        "#15803d"
-    )
+    block("Enrich Context", "Azure AD + User", "#15803d")
     arrow()
-
-    # Threat Intel
-    render_block_card(
-        "IP Threat Intelligence",
-        "Reputation, TOR, VPN",
-        "#374151"
-    )
+    block("Threat Intel", "IP reputation", "#374151")
     arrow()
-
-    # Decision Node
-    render_block_card(
-        "Decision: Compromise Confidence?",
-        "Aggregate all signals",
-        "#d97706"
-    )
+    block("Decision Node", "Compromise confidence?", "#d97706")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # -------------------------------------------------
-    # BRANCHING (NOT ONE-DIMENSIONAL)
-    # -------------------------------------------------
-    st.markdown(
-        "<div style='display:flex;gap:80px;margin-top:30px;'>",
-        unsafe_allow_html=True
-    )
+    st.markdown("<div style='display:flex;gap:80px;margin-top:30px;'>", unsafe_allow_html=True)
 
-    # HIGH CONFIDENCE PATH
+    # HIGH PATH
     st.markdown("<div>", unsafe_allow_html=True)
-    render_block_card(
-        "HIGH Confidence",
-        "Automated containment",
-        "#b91c1c"
-    )
+    block("HIGH Confidence", "Auto containment", "#b91c1c")
     arrow()
-    render_block_card(
-        "Disable Account + Block IP",
-        "Immediate containment",
-        "#7f1d1d"
-    )
+    block("Disable Account", "Azure AD actions", "#7f1d1d")
     arrow()
-    render_block_card(
-        "Preserve Evidence",
-        "Logs & forensic data",
-        "#1f2937"
-    )
+    block("Preserve Evidence", "Logs + EDR", "#1f2937")
     arrow()
-    render_block_card(
-        "Notify SOC (L2)",
-        "Incident created",
-        "#065f46"
-    )
+    block("Notify L2 SOC", "Incident created", "#065f46")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # LOW / MEDIUM CONFIDENCE PATH
+    # LOW/MED PATH
     st.markdown("<div>", unsafe_allow_html=True)
-    render_block_card(
-        "LOW / MEDIUM Confidence",
-        "Manual review",
-        "#2563eb"
-    )
+    block("LOW / MEDIUM", "Manual review", "#2563eb")
     arrow()
-    render_block_card(
-        "L1 Investigation",
-        "Validate legitimacy",
-        "#1e40af"
-    )
+    block("L1 Investigation", "Validate legitimacy", "#1e40af")
     arrow()
-    render_block_card(
-        "Close or Escalate",
-        "Based on findings",
-        "#0f172a"
-    )
+    block("Close / Escalate", "Based on findings", "#0f172a")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
