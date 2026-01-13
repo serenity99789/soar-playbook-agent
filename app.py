@@ -5,14 +5,21 @@ import streamlit as st
 from google import genai
 
 # -------------------------------------------------
-# CONFIG
+# PAGE CONFIG
 # -------------------------------------------------
-st.set_page_config(page_title="SOAR Playbook Generator", layout="wide")
+st.set_page_config(
+    page_title="SOAR Playbook Generator",
+    layout="wide"
+)
+
 st.caption("Built by Srinivas")
 
+# -------------------------------------------------
+# API CONFIG
+# -------------------------------------------------
 API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
-    st.error("GEMINI_API_KEY not set")
+    st.error("GEMINI_API_KEY not set in Streamlit secrets")
     st.stop()
 
 client = genai.Client(api_key=API_KEY)
@@ -22,7 +29,10 @@ client = genai.Client(api_key=API_KEY)
 # -------------------------------------------------
 def build_prompt(use_case: str) -> str:
     return f"""
-Return STRICT JSON only.
+You MUST return ONLY valid JSON.
+Do NOT use markdown.
+Do NOT wrap in ```json.
+Do NOT add commentary.
 
 Schema:
 {{
@@ -45,15 +55,26 @@ Use case:
 """
 
 # -------------------------------------------------
-# PARSERS
+# ROBUST JSON EXTRACTOR
 # -------------------------------------------------
-def extract_blocks(text):
-    match = re.search(r'\{{.*\}}', text, re.DOTALL)
+def extract_json(text: str):
+    if not text:
+        return None
+
+    # Remove markdown code fences if present
+    text = text.strip()
+    text = re.sub(r"^```json", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"^```", "", text).strip()
+    text = re.sub(r"```$", "", text).strip()
+
+    # Extract JSON object
+    match = re.search(r"\{.*\}", text, re.DOTALL)
     if not match:
         return None
+
     try:
         return json.loads(match.group())
-    except Exception:
+    except json.JSONDecodeError:
         return None
 
 # -------------------------------------------------
@@ -61,30 +82,35 @@ def extract_blocks(text):
 # -------------------------------------------------
 st.title("🛡️ SOAR Playbook Generator")
 
-use_case = st.text_area("SOAR Use Case Description", height=220)
+use_case = st.text_area(
+    "SOAR Use Case Description",
+    height=240
+)
+
 generate = st.button("Generate Playbook")
 
 if not generate:
     st.stop()
 
 # -------------------------------------------------
-# GENERATE
+# MODEL CALL
 # -------------------------------------------------
-with st.spinner("Generating playbook..."):
+with st.spinner("Generating SOAR playbook..."):
     response = client.models.generate_content(
         model="models/gemini-2.5-flash",
         contents=build_prompt(use_case)
     )
-    raw = response.text
+    raw_output = response.text
 
-data = extract_blocks(raw)
+data = extract_json(raw_output)
+
 if not data:
-    st.error("Model did not return valid JSON")
-    st.code(raw)
+    st.error("Model returned output but JSON could not be parsed")
+    st.code(raw_output)
     st.stop()
 
-blocks = data["blocks"]
-documentation = data["documentation"]
+blocks = data.get("blocks", [])
+documentation = data.get("documentation", "")
 
 # -------------------------------------------------
 # TEXT BLOCKS
@@ -92,68 +118,68 @@ documentation = data["documentation"]
 st.success("Playbook generated successfully")
 
 st.header("🧩 Playbook Blocks")
-for i, b in enumerate(blocks, 1):
-    with st.expander(f"Block {i}: {b['block_name']}"):
-        st.write(b)
+for idx, block in enumerate(blocks, start=1):
+    with st.expander(f"Block {idx}: {block['block_name']}"):
+        st.json(block)
 
 # -------------------------------------------------
-# GRAPHICAL FLOW (REAL RENDER)
+# GRAPHICAL SOAR FLOW (NON-LINEAR)
 # -------------------------------------------------
 st.header("🔗 SOAR Flow (Graphical)")
 
 flow_html = """
-<div style="display:flex; flex-direction:column; align-items:center; gap:20px">
+<div style="display:flex;flex-direction:column;align-items:center;gap:22px">
 
-<div style="background:#0f766e;color:white;padding:14px 22px;border-radius:14px;font-weight:600">
-Trigger: Account Compromise Alert
+<div style="background:#0f766e;color:white;padding:14px 26px;border-radius:14px;font-weight:600">
+Trigger: Brute Force Success Alert
 </div>
 
 <div style="font-size:28px">↓</div>
 
-<div style="background:#15803d;color:white;padding:14px 22px;border-radius:14px;font-weight:600">
-Enrichment: Azure AD + IP Reputation
+<div style="background:#15803d;color:white;padding:14px 26px;border-radius:14px;font-weight:600">
+Enrichment: User + IP Context
 </div>
 
 <div style="font-size:28px">↓</div>
 
-<div style="background:#1e293b;color:white;padding:14px 22px;border-radius:14px;font-weight:600">
-Validation: Sign-in + EDR + Firewall Logs
+<div style="background:#1e293b;color:white;padding:14px 26px;border-radius:14px;font-weight:600">
+Correlation: Azure AD · EDR · Firewall
 </div>
 
 <div style="font-size:28px">↓</div>
 
-<div style="background:#d97706;color:white;padding:14px 22px;border-radius:14px;font-weight:600">
-Decision: Compromise Confidence?
+<div style="background:#d97706;color:white;padding:14px 26px;border-radius:14px;font-weight:600">
+Decision: Compromise Confidence
 </div>
 
-<div style="display:flex; gap:80px; margin-top:10px">
+<div style="display:flex;gap:90px;margin-top:10px">
 
-  <div style="display:flex; flex-direction:column; align-items:center; gap:10px">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
     <div style="font-size:24px">↙</div>
     <div style="background:#b91c1c;color:white;padding:14px 22px;border-radius:14px;font-weight:600">
-    HIGH Confidence → Containment
+      HIGH Confidence
     </div>
     <div style="background:#7f1d1d;color:white;padding:12px 18px;border-radius:12px">
-    Disable User · Block IP · Reset Credentials
+      Disable User<br>Block IP<br>Revoke Sessions
     </div>
   </div>
 
-  <div style="display:flex; flex-direction:column; align-items:center; gap:10px">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
     <div style="font-size:24px">↘</div>
     <div style="background:#2563eb;color:white;padding:14px 22px;border-radius:14px;font-weight:600">
-    MEDIUM / LOW → Analyst Review
+      MEDIUM / LOW
     </div>
     <div style="background:#1e40af;color:white;padding:12px 18px;border-radius:12px">
-    Assign L2 Task · Add Context
+      L1/L2 Review<br>Manual Validation
     </div>
   </div>
 
 </div>
 
-<div style="font-size:28px;margin-top:10px">↓</div>
+<div style="font-size:28px">↓</div>
 
-<div style="background:#334155;color:white;padding:14px 22px;border-radius:14px;font-weight:600">
-Preserve Evidence · Notify SOC · Update Incident
+<div style="background:#334155;color:white;padding:14px 26px;border-radius:14px;font-weight:600">
+Preserve Evidence · Create Incident · Notify SOC
 </div>
 
 </div>
