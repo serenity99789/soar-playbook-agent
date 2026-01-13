@@ -106,7 +106,7 @@ if generate:
 
     with st.spinner("Generating playbook..."):
         response = client.models.generate_content(
-            model="models/gemini-2.5-flash",
+            model="models/gemini-flash-latest",
             contents=build_prompt(use_case_input),
         )
         raw_output = response.text
