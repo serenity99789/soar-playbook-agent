@@ -33,28 +33,35 @@ def parse_model_output(text: str):
     cleaned = re.sub(r"```json|```", "", text).strip()
     return json.loads(cleaned)
 
-def box(title, subtitle, color):
+def flow_box(title, subtitle, color, arrow=None):
+    arrow_html = ""
+    if arrow:
+        arrow_html = f"""
+        <div style="
+            margin-top:8px;
+            font-size:20px;
+            font-weight:700;
+        ">{arrow}</div>
+        """
+
     return f"""
     <div style="
-        padding:10px 16px;
+        padding:12px 18px;
         border-radius:12px;
         background:{color};
         color:white;
-        font-weight:600;
         text-align:center;
+        font-weight:600;
         box-shadow:0 4px 10px rgba(0,0,0,0.18);
-        white-space:nowrap;
-        font-size:14px;
+        min-width:190px;
     ">
         {title}<br/>
         <span style="font-size:11px;font-weight:400;">
             {subtitle}
         </span>
+        {arrow_html}
     </div>
     """
-
-def arrow(symbol):
-    return f"<div style='font-size:22px;text-align:center;line-height:1;'>{symbol}</div>"
 
 st.title("🛡️ SOAR Playbook Generator")
 
@@ -84,56 +91,32 @@ if st.button("Generate Playbook"):
 
     st.header("🔗 SOAR Flow (Graphical)")
 
-    flow = f"""
+    flow_html = f"""
     <div style="
         display:grid;
-        grid-template-columns: 1fr auto 1fr;
-        gap:18px 40px;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap:26px 40px;
         justify-items:center;
         align-items:center;
         margin-top:20px;
     ">
 
-        {box("Trigger", "SIEM Brute Force", "#0f766e")}
-        {arrow("↓")}
-        <div></div>
+        {flow_box("Trigger", "SIEM Brute Force", "#0f766e", "↓")}
+        {flow_box("Enrichment", "Azure AD + IP", "#15803d", "↓")}
+        {flow_box("Threat Intel", "IP Reputation", "#374151", "↓")}
 
-        {box("Enrichment", "Azure AD + IP", "#15803d")}
-        {arrow("↓")}
-        <div></div>
+        {flow_box("Decision", "Compromise Confidence?", "#d97706")}
+        {flow_box("HIGH", "Auto Containment", "#b91c1c", "↓")}
+        {flow_box("LOW / MED", "Manual Review", "#2563eb", "↓")}
 
-        {box("Threat Intel", "IP Reputation", "#374151")}
-        {arrow("↓")}
-        <div></div>
-
-        {box("Decision", "Compromise Confidence?", "#d97706")}
-        {arrow("↓")}
-        {arrow("↓")}
-
-        {box("HIGH", "Auto Containment", "#b91c1c")}
-        <div></div>
-        {box("LOW / MED", "Manual Review", "#2563eb")}
-
-        {arrow("↓")}
-        <div></div>
-        {arrow("↓")}
-
-        {box("Account Actions", "Disable / Revoke", "#7f1d1d")}
-        <div></div>
-        {box("L1 Analysis", "Validate & Decide", "#1e40af")}
-
-        {arrow("↓")}
-        <div></div>
-        {arrow("↓")}
-
-        {box("Preserve Evidence", "Logs + EDR", "#1f2937")}
-        <div></div>
-        {box("Close / Escalate", "Next Steps", "#0f172a")}
+        {flow_box("Account Actions", "Disable / Revoke", "#7f1d1d")}
+        {flow_box("Preserve Evidence", "Logs + EDR", "#1f2937")}
+        {flow_box("L1 Analysis", "Validate & Decide", "#1e40af")}
 
     </div>
     """
 
-    st.markdown(flow, unsafe_allow_html=True)
+    st.markdown(flow_html, unsafe_allow_html=True)
 
     st.header("📄 Playbook Documentation")
     st.markdown(data.get("documentation", ""))
