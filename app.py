@@ -2,6 +2,7 @@ import os
 import json
 import re
 import streamlit as st
+import streamlit.components.v1 as components
 from google import genai
 
 # -------------------------------------------------
@@ -130,18 +131,18 @@ if st.button("Generate Playbook"):
             st.markdown(f"**Analyst Notes:** {block['analyst_notes']}")
 
     # -------------------------------------------------
-    # GRAPHICAL FLOW (LOGIC BASED)
+    # GRAPHICAL FLOW
     # -------------------------------------------------
     st.header("🔗 SOAR Flow (Graphical)")
 
     st.markdown("<div style='display:flex;align-items:center;flex-wrap:wrap;'>", unsafe_allow_html=True)
     box("Trigger", "SIEM Alert", "#0f766e")
     arrow()
-    box("Enrichment", "Azure AD + IP", "#15803d")
+    box("Enrichment", "User + IP Context", "#15803d")
     arrow()
-    box("Threat Intel", "Reputation Check", "#374151")
+    box("Threat Intel", "Reputation Lookup", "#374151")
     arrow()
-    box("Decision", "Confidence Gate", "#d97706")
+    box("Decision", "Confidence Level?", "#d97706")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<br/>", unsafe_allow_html=True)
@@ -149,21 +150,21 @@ if st.button("Generate Playbook"):
     st.markdown("<div style='display:flex;gap:80px;flex-wrap:wrap;'>", unsafe_allow_html=True)
 
     st.markdown("<div>", unsafe_allow_html=True)
-    box("HIGH", "Auto Contain", "#b91c1c")
+    box("HIGH Confidence", "Automated Containment", "#b91c1c")
     arrow()
     box("Account Actions", "Disable / Revoke", "#7f1d1d")
     arrow()
     box("Preserve Evidence", "Logs + EDR", "#1f2937")
     arrow()
-    box("Notify L2", "Incident", "#065f46")
+    box("Notify L2", "Incident Created", "#065f46")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div>", unsafe_allow_html=True)
-    box("LOW / MED", "Manual Review", "#2563eb")
+    box("LOW / MED Confidence", "Manual Review", "#2563eb")
     arrow()
-    box("L1 Analysis", "Validate", "#1e40af")
+    box("L1 Analysis", "Validate Alert", "#1e40af")
     arrow()
-    box("Close / Escalate", "Decision", "#0f172a")
+    box("Close or Escalate", "Decision", "#0f172a")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
@@ -175,47 +176,64 @@ if st.button("Generate Playbook"):
     st.markdown(documentation)
 
     # -------------------------------------------------
-    # EXTERNAL GRAPHIC PROMPT (FOR FLOWCHART TOOLS)
+    # EXTERNAL FLOWCHART PROMPT + COPY BUTTON
     # -------------------------------------------------
-    st.header("🧠 AI Flowchart Prompt (Copy & Use Anywhere)")
+    st.header("🧠 AI Flowchart Prompt (SOC / SOAR Tools)")
 
-    enterprise_prompt = f"""
-Design a production-grade SOAR playbook flowchart.
+    flow_prompt = f"""
+Create a professional SOAR playbook flowchart.
 
 Use Case:
 {use_case}
 
-Flow (all arrows explicit):
+FLOW SEQUENCE (use arrows exactly as shown):
 
-Trigger (SIEM Alert)
-→ Enrichment (User + IP Context)
-→ Threat Intelligence Lookup
-→ Decision: Confidence Level?
+[SIEM Alert Trigger]
+→ [User & IP Enrichment]
+→ [Threat Intelligence Lookup]
+→ [Decision: Confidence Level?]
 
-IF HIGH:
-Decision → Automated Containment
-→ Disable/Revoke Account
-→ Preserve Evidence
-→ Notify L2 SOC
+IF High Confidence:
+[Decision] → [Automated Containment]
+→ [Disable / Revoke Account]
+→ [Preserve Evidence (Logs + EDR)]
+→ [Notify L2 SOC / Create Incident]
 → END
 
-IF LOW or MEDIUM:
-Decision → Manual Review (L1)
-→ Validate Alert
-→ Close Incident OR Escalate to L2
+IF Low or Medium Confidence:
+[Decision] → [Manual Review by L1]
+→ [Validate Alert]
+→ [Close Incident OR Escalate to L2]
 → END
 
-Ensure:
-- All blocks are connected
-- Decision node clearly branches
-- No unconnected steps
-- SOC-ready layout
+Rules:
+- Every block must be connected
+- Decision node must branch clearly
+- No orphan nodes
+- SOC-ready, enterprise layout
 """
 
     st.text_area(
-        "Prompt for AI Flowchart / SOAR Designer",
-        value=enterprise_prompt,
-        height=320
+        "Copy this into Whimsical / Miro / Draw.io / SOAR Designer",
+        value=flow_prompt,
+        height=340,
+        key="flow_prompt"
     )
 
-    st.caption("Copy this prompt into any AI diagram / SOAR flowchart tool")
+    components.html(
+        f"""
+        <button onclick="navigator.clipboard.writeText(`{flow_prompt}`)"
+        style="
+            background:#2563eb;
+            color:white;
+            padding:10px 16px;
+            border:none;
+            border-radius:8px;
+            cursor:pointer;
+            margin-top:8px;
+        ">
+        📋 Copy Prompt to Clipboard
+        </button>
+        """,
+        height=60,
+    )
