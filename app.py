@@ -21,7 +21,7 @@ if not API_KEY:
 client = genai.Client(api_key=API_KEY)
 
 # -------------------------------------------------
-# PROMPT
+# PROMPT TO MODEL (JSON ONLY)
 # -------------------------------------------------
 def build_prompt(use_case: str) -> str:
     return f"""
@@ -82,10 +82,7 @@ def box(title, subtitle, color):
     )
 
 def arrow():
-    st.markdown(
-        "<span style='font-size:26px;margin:0 10px;'>→</span>",
-        unsafe_allow_html=True
-    )
+    st.markdown("<span style='font-size:26px;margin:0 10px;'>→</span>", unsafe_allow_html=True)
 
 # -------------------------------------------------
 # MAIN UI
@@ -133,18 +130,18 @@ if st.button("Generate Playbook"):
             st.markdown(f"**Analyst Notes:** {block['analyst_notes']}")
 
     # -------------------------------------------------
-    # GRAPHICAL FLOW
+    # GRAPHICAL FLOW (LOGIC BASED)
     # -------------------------------------------------
     st.header("🔗 SOAR Flow (Graphical)")
 
     st.markdown("<div style='display:flex;align-items:center;flex-wrap:wrap;'>", unsafe_allow_html=True)
-    box("Trigger", "SIEM Brute Force", "#0f766e")
+    box("Trigger", "SIEM Alert", "#0f766e")
     arrow()
     box("Enrichment", "Azure AD + IP", "#15803d")
     arrow()
-    box("Threat Intel", "IP Reputation", "#374151")
+    box("Threat Intel", "Reputation Check", "#374151")
     arrow()
-    box("Decision", "Confidence?", "#d97706")
+    box("Decision", "Confidence Gate", "#d97706")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<br/>", unsafe_allow_html=True)
@@ -178,58 +175,47 @@ if st.button("Generate Playbook"):
     st.markdown(documentation)
 
     # -------------------------------------------------
-    # ENTERPRISE-GRADE FLOWCHART PROMPT
+    # EXTERNAL GRAPHIC PROMPT (FOR FLOWCHART TOOLS)
     # -------------------------------------------------
-    st.header("🧠 AI Prompt for SOAR / Flowchart Builders")
-
-    block_lines = "\n".join(
-        [f"{i+1}. {b['block_name']} – {b['purpose']}" for i, b in enumerate(blocks)]
-    )
+    st.header("🧠 AI Flowchart Prompt (Copy & Use Anywhere)")
 
     enterprise_prompt = f"""
-You are designing a production-grade SOAR playbook for a Security Operations Center.
+Design a production-grade SOAR playbook flowchart.
 
-Playbook Name:
+Use Case:
 {use_case}
 
-Trigger:
-- SIEM alert indicating the start of the incident workflow.
+Flow (all arrows explicit):
 
-Preconditions:
-- Alert severity evaluated
-- Required log sources available
-- SOAR platform authenticated to security tools
+Trigger (SIEM Alert)
+→ Enrichment (User + IP Context)
+→ Threat Intelligence Lookup
+→ Decision: Confidence Level?
 
-Sequential Playbook Blocks:
-{block_lines}
+IF HIGH:
+Decision → Automated Containment
+→ Disable/Revoke Account
+→ Preserve Evidence
+→ Notify L2 SOC
+→ END
 
-Decision Node:
-- Calculate compromise confidence using enrichment results, threat intelligence, and behavioral indicators.
+IF LOW or MEDIUM:
+Decision → Manual Review (L1)
+→ Validate Alert
+→ Close Incident OR Escalate to L2
+→ END
 
-Decision Logic:
-IF confidence == HIGH:
-    - Automatically contain the threat
-    - Disable or revoke the affected account
-    - Block malicious IPs if applicable
-    - Preserve all forensic evidence
-    - Create incident and notify L2 SOC
-
-IF confidence == LOW or MEDIUM:
-    - Route incident to L1 SOC for manual validation
-    - Escalate to L2 if additional risk indicators appear
-    - Close as false positive if validated
-
-End States:
-- Incident contained and documented
-- Evidence preserved
-- Analyst actions tracked
-
-Render this as a SOAR playbook diagram with:
-- Clear start trigger
-- Sequential blocks
-- Explicit decision gateways
-- Parallel branches
-- L1 vs L2 analyst handoff
+Ensure:
+- All blocks are connected
+- Decision node clearly branches
+- No unconnected steps
+- SOC-ready layout
 """
 
-    st.code(enterprise_prompt.strip(), language=None)
+    st.text_area(
+        "Prompt for AI Flowchart / SOAR Designer",
+        value=enterprise_prompt,
+        height=320
+    )
+
+    st.caption("Copy this prompt into any AI diagram / SOAR flowchart tool")
