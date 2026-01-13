@@ -28,9 +28,9 @@ def build_prompt(use_case: str) -> str:
 You are a SOAR playbook generation engine.
 
 Return ONLY valid JSON.
-NO markdown.
-NO backticks.
-NO explanations.
+Do NOT use markdown.
+Do NOT use triple backticks.
+Do NOT include explanations.
 
 Schema:
 {{
@@ -53,17 +53,16 @@ Use case:
 """
 
 # -------------------------------------------------
-# SAFE JSON PARSER (FIX)
+# SAFE JSON PARSER
 # -------------------------------------------------
-def safe_parse_json(text: str):
-    # Remove ```json and ``` if present
+def parse_model_output(text: str):
     cleaned = re.sub(r"```json|```", "", text).strip()
     return json.loads(cleaned)
 
 # -------------------------------------------------
-# UI HELPERS
+# UI COMPONENTS
 # -------------------------------------------------
-def block(title, subtitle, color):
+def render_box(title, subtitle, color):
     st.markdown(
         f"""
         <div style="
@@ -93,7 +92,11 @@ def arrow():
 # -------------------------------------------------
 st.title("🛡️ SOAR Playbook Generator")
 
-use_case_input = st.text_area("SOAR Use Case Description", height=220)
+use_case_input = st.text_area(
+    "SOAR Use Case Description",
+    height=220,
+    placeholder="Account Compromise – Brute Force Success"
+)
 
 if st.button("Generate Playbook"):
 
@@ -108,64 +111,64 @@ if st.button("Generate Playbook"):
         )
 
     try:
-        data = safe_parse_json(response.text)
+        data = parse_model_output(response.text)
         blocks = data["blocks"]
         documentation = data["documentation"]
     except Exception:
-        st.error("Model response could not be parsed safely")
+        st.error("Model output could not be parsed safely.")
         st.stop()
 
     # -------------------------------------------------
-    # TEXT PLAYBOOK (NO CODE SHOWN)
+    # TEXTUAL PLAYBOOK (NO CODE SHOWN)
     # -------------------------------------------------
     st.success("Playbook generated successfully")
 
-    st.header("🧩 Playbook Steps")
-    for i, b in enumerate(blocks, start=1):
-        with st.expander(f"Step {i}: {b['block_name']}"):
-            st.markdown(f"**Purpose:** {b['purpose']}")
-            st.markdown(f"**Inputs:** {', '.join(b['inputs'])}")
-            st.markdown(f"**Outputs:** {', '.join(b['outputs'])}")
-            st.markdown(f"**SLA Impact:** {b['sla_impact']}")
-            st.markdown(f"**Notes:** {b['analyst_notes']}")
+    st.header("🧩 Playbook Steps (Readable)")
+    for i, block in enumerate(blocks, start=1):
+        with st.expander(f"Step {i}: {block['block_name']}"):
+            st.markdown(f"**Purpose:** {block['purpose']}")
+            st.markdown(f"**Inputs:** {', '.join(block['inputs'])}")
+            st.markdown(f"**Outputs:** {', '.join(block['outputs'])}")
+            st.markdown(f"**SLA Impact:** {block['sla_impact']}")
+            st.markdown(f"**Analyst Notes:** {block['analyst_notes']}")
 
     # -------------------------------------------------
-    # GRAPHICAL FLOW (DECISION AWARE)
+    # GRAPHICAL SOAR FLOW (DECISION AWARE, NON-LINEAR)
     # -------------------------------------------------
     st.header("🔗 SOAR Flow (Graphical)")
 
+    # Top linear flow
     st.markdown("<div style='display:flex;gap:18px;align-items:center;overflow-x:auto;'>", unsafe_allow_html=True)
-
-    block("Trigger: SIEM Alert", "Brute force success", "#0f766e")
+    render_box("Trigger", "SIEM Brute Force Success", "#0f766e")
     arrow()
-    block("Enrich Context", "Azure AD + User", "#15803d")
+    render_box("Enrichment", "Azure AD + IP Context", "#15803d")
     arrow()
-    block("Threat Intel", "IP reputation", "#374151")
+    render_box("Threat Intel", "IP Reputation", "#374151")
     arrow()
-    block("Decision Node", "Compromise confidence?", "#d97706")
-
+    render_box("Decision", "Compromise Confidence?", "#d97706")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<div style='display:flex;gap:80px;margin-top:30px;'>", unsafe_allow_html=True)
+    # Branching paths
+    st.markdown("<div style='display:flex;gap:80px;margin-top:32px;'>", unsafe_allow_html=True)
 
-    # HIGH PATH
+    # HIGH confidence path
     st.markdown("<div>", unsafe_allow_html=True)
-    block("HIGH Confidence", "Auto containment", "#b91c1c")
+    render_box("HIGH Confidence", "Auto Containment", "#b91c1c")
     arrow()
-    block("Disable Account", "Azure AD actions", "#7f1d1d")
+    render_box("Disable Account", "Azure AD Actions", "#7f1d1d")
     arrow()
-    block("Preserve Evidence", "Logs + EDR", "#1f2937")
+    render_box("Preserve Evidence", "Logs + EDR", "#1f2937")
     arrow()
-    block("Notify L2 SOC", "Incident created", "#065f46")
+    render_box("Notify L2 SOC", "Incident Created", "#065f46")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # LOW/MED PATH
+    # LOW / MED confidence path
     st.markdown("<div>", unsafe_allow_html=True)
-    block("LOW / MEDIUM", "Manual review", "#2563eb")
+    render_box("LOW / MEDIUM", "Manual Review", "#2563eb")
     arrow()
-    block("L1 Investigation", "Validate legitimacy", "#1e40af")
+    render_box("L1 Investigation", "Validate Activity", "#1e40af")
     arrow()
-    block("Close / Escalate", "Based on findings", "#0f172a")
+    render_box("Close or Escalate", "Based on Findings", "#0f172a")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
