@@ -8,7 +8,7 @@ from google import genai
 # PAGE CONFIG
 # -------------------------------------------------
 st.set_page_config(page_title="SOAR Playbook Generator", layout="wide")
-st.caption("Built by Accenture")
+st.caption("Built by Srinivas")
 
 # -------------------------------------------------
 # API CONFIG
@@ -21,7 +21,7 @@ if not API_KEY:
 client = genai.Client(api_key=API_KEY)
 
 # -------------------------------------------------
-# PROMPT TO MODEL (JSON ONLY)
+# PROMPT
 # -------------------------------------------------
 def build_prompt(use_case: str) -> str:
     return f"""
@@ -56,6 +56,17 @@ def parse_model_output(text: str):
     return json.loads(cleaned)
 
 # -------------------------------------------------
+# WORKFLOW SUMMARY GENERATOR
+# -------------------------------------------------
+def generate_workflow_steps(blocks):
+    steps = []
+    for i, block in enumerate(blocks, start=1):
+        name = block["block_name"].replace("_", " ")
+        purpose = block["purpose"]
+        steps.append(f"{i}. {name} – {purpose}")
+    return steps
+
+# -------------------------------------------------
 # UI ELEMENTS
 # -------------------------------------------------
 def box(title, subtitle, color):
@@ -82,7 +93,10 @@ def box(title, subtitle, color):
     )
 
 def arrow():
-    st.markdown("<span style='font-size:26px;margin:0 10px;'>→</span>", unsafe_allow_html=True)
+    st.markdown(
+        "<span style='font-size:26px;margin:0 10px;'>→</span>",
+        unsafe_allow_html=True
+    )
 
 # -------------------------------------------------
 # MAIN UI
@@ -115,11 +129,11 @@ if st.button("Generate Playbook"):
         st.error("Model output could not be parsed.")
         st.stop()
 
-    # -------------------------------------------------
-    # TEXTUAL STEPS
-    # -------------------------------------------------
     st.success("Playbook generated")
 
+    # -------------------------------------------------
+    # TEXTUAL PLAYBOOK STEPS
+    # -------------------------------------------------
     st.header("🧩 Playbook Steps")
     for i, block in enumerate(blocks, start=1):
         with st.expander(f"Step {i}: {block['block_name']}"):
@@ -130,18 +144,28 @@ if st.button("Generate Playbook"):
             st.markdown(f"**Analyst Notes:** {block['analyst_notes']}")
 
     # -------------------------------------------------
-    # GRAPHICAL FLOW (LOGIC BASED)
+    # WORKFLOW SUMMARY (NEW – TECHNICAL STEPS)
+    # -------------------------------------------------
+    st.header("📌 Workflow Summary (Technical Steps)")
+
+    workflow_steps = generate_workflow_steps(blocks)
+
+    for step in workflow_steps:
+        st.markdown(step)
+
+    # -------------------------------------------------
+    # GRAPHICAL FLOW (STATIC REPRESENTATION)
     # -------------------------------------------------
     st.header("🔗 SOAR Flow (Graphical)")
 
     st.markdown("<div style='display:flex;align-items:center;flex-wrap:wrap;'>", unsafe_allow_html=True)
-    box("Trigger", "SIEM Alert", "#0f766e")
+    box("Trigger", "SIEM Detection", "#0f766e")
     arrow()
-    box("Enrichment", "Azure AD + IP", "#15803d")
+    box("Enrichment", "Identity + IP", "#15803d")
     arrow()
     box("Threat Intel", "Reputation Check", "#374151")
     arrow()
-    box("Decision", "Confidence Gate", "#d97706")
+    box("Decision", "Confidence Evaluation", "#d97706")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<br/>", unsafe_allow_html=True)
@@ -149,9 +173,9 @@ if st.button("Generate Playbook"):
     st.markdown("<div style='display:flex;gap:80px;flex-wrap:wrap;'>", unsafe_allow_html=True)
 
     st.markdown("<div>", unsafe_allow_html=True)
-    box("HIGH", "Auto Contain", "#b91c1c")
+    box("HIGH", "Auto Containment", "#b91c1c")
     arrow()
-    box("Account Actions", "Disable / Revoke", "#7f1d1d")
+    box("Disable / Block", "Account & IP", "#7f1d1d")
     arrow()
     box("Preserve Evidence", "Logs + EDR", "#1f2937")
     arrow()
@@ -173,49 +197,3 @@ if st.button("Generate Playbook"):
     # -------------------------------------------------
     st.header("📄 Playbook Documentation")
     st.markdown(documentation)
-
-    # -------------------------------------------------
-    # EXTERNAL GRAPHIC PROMPT (FOR FLOWCHART TOOLS)
-    # -------------------------------------------------
-    st.header("🧠 AI Flowchart Prompt (Copy & Use Anywhere)")
-
-    enterprise_prompt = f"""
-Design a production-grade SOAR playbook flowchart.
-
-Use Case:
-{use_case}
-
-Flow (all arrows explicit):
-
-Trigger (SIEM Alert)
-→ Enrichment (User + IP Context)
-→ Threat Intelligence Lookup
-→ Decision: Confidence Level?
-
-IF HIGH:
-Decision → Automated Containment
-→ Disable/Revoke Account
-→ Preserve Evidence
-→ Notify L2 SOC
-→ END
-
-IF LOW or MEDIUM:
-Decision → Manual Review (L1)
-→ Validate Alert
-→ Close Incident OR Escalate to L2
-→ END
-
-Ensure:
-- All blocks are connected
-- Decision node clearly branches
-- No unconnected steps
-- SOC-ready layout
-"""
-
-    st.text_area(
-        "Prompt for AI Flowchart / SOAR Designer",
-        value=enterprise_prompt,
-        height=320
-    )
-
-    st.caption("Copy this prompt into any AI diagram / SOAR flowchart tool")
