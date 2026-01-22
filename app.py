@@ -1,15 +1,12 @@
 import os
 import json
 import re
-import unicodedata
 import streamlit as st
 import streamlit.components.v1 as components
 from google import genai
-from io import BytesIO, StringIO
+from io import StringIO
 from docx import Document
 from PyPDF2 import PdfReader
-from reportlab.platypus import SimpleDocTemplate, Paragraph
-from reportlab.lib.styles import getSampleStyleSheet
 
 # -------------------------------------------------
 # PAGE CONFIG
@@ -28,61 +25,13 @@ if not API_KEY:
 client = genai.Client(api_key=API_KEY)
 
 # -------------------------------------------------
-# TEXT SANITIZATION (CRITICAL FIX)
+# PROMPT BUILDERS
 # -------------------------------------------------
-def clean_text(text: str) -> str:
-    if not text:
-        return ""
-
-    # Normalize unicode
-    text = unicodedata.normalize("NFKC", text)
-
-    # Remove null bytes
-    text = text.replace("\x00", "")
-
-    # Remove non-printable/control chars
-    text = "".join(ch for ch in text if ch.isprintable())
-
-    # Collapse excessive whitespace
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    text = re.sub(r"[ \t]{2,}", " ", text)
-
-    return text.strip()
-
-# -------------------------------------------------
-# PROMPTS
-# -------------------------------------------------
-def build_irp_maker_prompt(clean_irp: str) -> str:
-    return f"""
-You are an IRP ingestion agent.
-
-Your job:
-- Read the Incident Response Procedure below
-- Extract ONLY operational response logic:
-  - detection & intake
-  - triage steps
-  - decision points
-  - containment actions
-  - escalation paths
-  - evidence handling
-- Ignore:
-  - policy text
-  - legal language
-  - roles & responsibilities
-  - repetition and fluff
-
-Return a compact, analyst-readable IRP summary.
-No markdown. Plain text only.
-
-IRP:
-{clean_irp}
-"""
-
 def build_playbook_prompt(text: str, mode: str) -> str:
     context = (
         "You are given a SOAR use case description."
         if mode == "Use Case"
-        else "You are given a normalized Incident Response Procedure."
+        else "You are given an Incident Response Procedure. Convert it into SOAR playbook logic."
     )
 
     return f"""
@@ -111,8 +60,30 @@ Input:
 {text}
 """
 
+def build_irp_extraction_prompt(raw_text: str) -> str:
+    return f"""
+You are given an Incident Response Procedure document.
+
+Extract ONLY:
+- actionable response steps
+- decision points
+- escalation logic
+- containment actions
+
+Ignore:
+- policy language
+- legal text
+- background explanations
+
+Return a clean, analyst-readable summary of the IRP
+that can be converted into a SOAR playbook.
+
+Text:
+{raw_text}
+"""
+
 # -------------------------------------------------
-# HELPERS
+# UTILITIES
 # -------------------------------------------------
 def parse_model_output(text: str):
     cleaned = re.sub(r"```json|```", "", text).strip()
@@ -127,7 +98,7 @@ def extract_text_from_docx(file):
     return "\n".join(p.text for p in doc.paragraphs)
 
 def extract_text_from_txt(file):
-    return StringIO(file.getvalue().decode("utf-8", errors="ignore")).read()
+    return StringIO(file.getvalue().decode("utf-8")).read()
 
 def generate_workflow_steps(blocks):
     return [
@@ -136,7 +107,7 @@ def generate_workflow_steps(blocks):
     ]
 
 # -------------------------------------------------
-# MERMAID DIAGRAM
+# MERMAID PLAYBOOK (COLOR CODED)
 # -------------------------------------------------
 def generate_mermaid_diagram(blocks):
     lines = ["flowchart LR"]
@@ -174,94 +145,100 @@ def generate_mermaid_diagram(blocks):
 
     return "\n".join(lines)
 
-def render_mermaid(code):
+def render_mermaid_with_download(mermaid_code):
     html = f"""
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
-      mermaid.initialize({{ startOnLoad:true, theme:"base" }});
+      mermaid.initialize({{
+        startOnLoad: true,
+        theme: "base",
+        flowchart: {{ nodeSpacing: 60, rankSpacing: 90 }}
+      }});
     </script>
-    <div class="mermaid">{code}</div>
+
+    <div id="diagram" class="mermaid">
+    {mermaid_code}
+    </div>
+
+    <br/>
+    <button onclick="downloadSVG()">Download Workflow Diagram (SVG)</button>
+
+    <script>
+    function downloadSVG() {{
+        const svg = document.querySelector("#diagram svg");
+        if (!svg) return alert("Diagram not ready");
+        const source = new XMLSerializer().serializeToString(svg);
+        const blob = new Blob([source], {{type: "image/svg+xml"}});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "soar_playbook.svg";
+        a.click();
+        URL.revokeObjectURL(url);
+    }}
+    </script>
     """
-    components.html(html, height=550, scrolling=True)
+    components.html(html, height=600, scrolling=True)
 
 # -------------------------------------------------
-# PDF GENERATOR
-# -------------------------------------------------
-def generate_doc_pdf(text: str) -> bytes:
-    buffer = BytesIO()
-    styles = getSampleStyleSheet()
-    story = [Paragraph(p, styles["Normal"]) for p in text.split("\n")]
-    SimpleDocTemplate(buffer).build(story)
-    buffer.seek(0)
-    return buffer.read()
-
-# -------------------------------------------------
-# UI
+# MAIN UI
 # -------------------------------------------------
 st.title("🛡️ SOAR Playbook Generator")
 
 mode = st.radio(
     "Input Type",
-    ["Use Case", "IRP (Document Upload)"],
+    ["Use Case", "IRP / SOP (Text)", "IRP (Document Upload)"],
     horizontal=True
 )
 
 input_text = ""
 
-# ---------- IRP DOCUMENT PIPELINE ----------
 if mode == "IRP (Document Upload)":
-    uploaded = st.file_uploader("Upload IRP (PDF / DOCX / TXT)", type=["pdf", "docx", "txt"])
+    uploaded = st.file_uploader(
+        "Upload IRP Document (PDF, DOCX, TXT)",
+        type=["pdf", "docx", "txt"]
+    )
 
     if uploaded:
-        with st.spinner("📥 Extracting raw text..."):
-            raw = (
-                extract_text_from_pdf(uploaded)
-                if uploaded.type == "application/pdf"
-                else extract_text_from_docx(uploaded)
-                if uploaded.type.endswith("document")
-                else extract_text_from_txt(uploaded)
-            )
+        if uploaded.type == "application/pdf":
+            raw_text = extract_text_from_pdf(uploaded)
+        elif uploaded.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+            raw_text = extract_text_from_docx(uploaded)
+        else:
+            raw_text = extract_text_from_txt(uploaded)
 
-        clean_irp = clean_text(raw)
-
-        if not clean_irp:
-            st.error("Could not extract readable text from this document.")
-            st.stop()
-
-        with st.spinner("🧠 IRP Maker Agent analyzing document..."):
+        with st.spinner("Extracting actionable IRP content..."):
             irp_summary = client.models.generate_content(
                 model="models/gemini-2.5-flash",
-                contents=build_irp_maker_prompt(clean_irp)
+                contents=build_irp_extraction_prompt(raw_text)
             ).text
 
-        irp_summary = clean_text(irp_summary)
-
-        with st.expander("📄 Normalized IRP (Agent Output)", expanded=False):
+        with st.expander("📄 Extracted IRP Summary", expanded=False):
             st.markdown(irp_summary)
 
         input_text = irp_summary
 
 else:
-    input_text = st.text_area(
-        "SOAR Use Case",
-        height=260,
-        placeholder="Account Compromise – Brute Force Success"
+    placeholder = (
+        "Account Compromise – Brute Force Success"
+        if mode == "Use Case"
+        else "Paste Incident Response Procedure text here..."
     )
+    input_text = st.text_area("Input", height=260, placeholder=placeholder)
 
-# ---------- PLAYBOOK GENERATION ----------
+# -------------------------------------------------
+# GENERATE PLAYBOOK
+# -------------------------------------------------
 if st.button("Generate Playbook"):
 
     if not input_text.strip():
         st.warning("Please provide input.")
         st.stop()
 
-    with st.spinner("⚙️ Generating SOAR playbook..."):
+    with st.spinner("Generating SOAR playbook..."):
         response = client.models.generate_content(
             model="models/gemini-2.5-flash",
-            contents=build_playbook_prompt(
-                input_text,
-                "Use Case" if mode == "Use Case" else "IRP"
-            )
+            contents=build_playbook_prompt(input_text, "Use Case" if mode == "Use Case" else "IRP")
         )
 
     data = parse_model_output(response.text)
@@ -271,28 +248,20 @@ if st.button("Generate Playbook"):
     st.success("Playbook generated")
 
     st.header("🧩 Playbook Steps")
-    for i, b in enumerate(blocks, start=1):
-        with st.expander(f"Step {i}: {b['block_name']}"):
-            st.markdown(b["purpose"])
+    for i, block in enumerate(blocks, start=1):
+        with st.expander(f"Step {i}: {block['block_name']}"):
+            st.markdown(f"**Purpose:** {block['purpose']}")
+            st.markdown(f"**Inputs:** {', '.join(block['inputs'])}")
+            st.markdown(f"**Outputs:** {', '.join(block['outputs'])}")
+            st.markdown(f"**SLA Impact:** {block['sla_impact']}")
+            st.markdown(f"**Analyst Notes:** {block['analyst_notes']}")
 
     st.header("📌 Workflow Summary")
     for step in generate_workflow_steps(blocks):
         st.markdown(step)
 
     st.header("🔗 SOAR Playbook Workflow")
-    render_mermaid(generate_mermaid_diagram(blocks))
+    render_mermaid_with_download(generate_mermaid_diagram(blocks))
 
-    st.header("📄 Playbook Documentation (Detailed)")
-    with st.expander("View Documentation", expanded=True):
-        st.markdown(
-            f"<div style='font-size:16px;line-height:1.6'>{documentation}</div>",
-            unsafe_allow_html=True
-        )
-
-    pdf_bytes = generate_doc_pdf(documentation)
-    st.download_button(
-        "⬇️ Download Playbook Documentation (PDF)",
-        data=pdf_bytes,
-        file_name="soar_playbook_documentation.pdf",
-        mime="application/pdf"
-    )
+    st.header("📄 Playbook Documentation")
+    st.markdown(documentation)
