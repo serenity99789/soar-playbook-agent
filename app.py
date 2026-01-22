@@ -2,6 +2,7 @@ import os
 import json
 import re
 import streamlit as st
+import streamlit.components.v1 as components
 from google import genai
 
 # -------------------------------------------------
@@ -67,47 +68,61 @@ def generate_workflow_steps(blocks):
     return steps
 
 # -------------------------------------------------
-# MERMAID PLAYBOOK GENERATOR (NEW)
+# MERMAID PLAYBOOK GENERATOR
 # -------------------------------------------------
 def generate_mermaid_diagram(blocks):
     lines = []
     lines.append("flowchart LR")
 
-    # Core blocks
     for i, block in enumerate(blocks):
-        node_id = f"B{i}"
-        label = block["block_name"].replace("_", " ")
-        lines.append(f'{node_id}["{label}"]')
-
+        label = block["block_name"].replace('"', "").replace("_", " ")
+        lines.append(f'B{i}["{label}"]')
         if i > 0:
-            lines.append(f"B{i-1} --> {node_id}")
+            lines.append(f'B{i-1} --> B{i}')
 
-    # Decision block
-    decision_id = "D1"
-    lines.append(f'{decision_id}{{"Threat Confidence?"}}')
-    lines.append(f"B{len(blocks)-1} --> {decision_id}")
+    lines.append('D1{"Threat Confidence?"}')
+    lines.append(f'B{len(blocks)-1} --> D1')
 
-    # High confidence path
     lines.append('HC["Auto Containment"]')
     lines.append('HC2["Disable / Block Entity"]')
     lines.append('HC3["Preserve Evidence"]')
     lines.append('HC4["Notify L2 / IR"]')
 
-    lines.append(f'{decision_id} -->|High| HC')
-    lines.append("HC --> HC2")
-    lines.append("HC2 --> HC3")
-    lines.append("HC3 --> HC4")
+    lines.append('D1 -->|High| HC')
+    lines.append('HC --> HC2 --> HC3 --> HC4')
 
-    # Low / Medium confidence path
     lines.append('LC["Manual Review"]')
     lines.append('LC2["L1 Analysis"]')
     lines.append('LC3["Close or Escalate"]')
 
-    lines.append(f'{decision_id} -->|Low / Medium| LC')
-    lines.append("LC --> LC2")
-    lines.append("LC2 --> LC3")
+    lines.append('D1 -->|Low / Medium| LC')
+    lines.append('LC --> LC2 --> LC3')
 
     return "\n".join(lines)
+
+# -------------------------------------------------
+# MERMAID RENDERER (CRITICAL FIX)
+# -------------------------------------------------
+def render_mermaid(mermaid_code):
+    html = f"""
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({{
+        startOnLoad: true,
+        theme: "default",
+        flowchart: {{
+          curve: "basis",
+          nodeSpacing: 50,
+          rankSpacing: 70
+        }}
+      }});
+    </script>
+
+    <div class="mermaid">
+    {mermaid_code}
+    </div>
+    """
+    components.html(html, height=600, scrolling=True)
 
 # -------------------------------------------------
 # MAIN UI
@@ -155,27 +170,19 @@ if st.button("Generate Playbook"):
             st.markdown(f"**Analyst Notes:** {block['analyst_notes']}")
 
     # -------------------------------------------------
-    # WORKFLOW SUMMARY (TECHNICAL STEPS)
+    # WORKFLOW SUMMARY
     # -------------------------------------------------
     st.header("📌 Workflow Summary (Technical Steps)")
-    workflow_steps = generate_workflow_steps(blocks)
-    for step in workflow_steps:
+    for step in generate_workflow_steps(blocks):
         st.markdown(step)
 
     # -------------------------------------------------
-    # SOAR PLAYBOOK WORKFLOW (DYNAMIC MERMAID)
+    # ACTUAL SOAR PLAYBOOK DIAGRAM (FIXED)
     # -------------------------------------------------
     st.header("🔗 SOAR Playbook Workflow")
 
     mermaid_code = generate_mermaid_diagram(blocks)
-
-    st.markdown(
-        f"""
-        ```mermaid
-        {mermaid_code}
-        ```
-        """
-    )
+    render_mermaid(mermaid_code)
 
     # -------------------------------------------------
     # DOCUMENTATION
