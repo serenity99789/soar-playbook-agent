@@ -8,7 +8,7 @@ from google import genai
 # PAGE CONFIG
 # -------------------------------------------------
 st.set_page_config(page_title="SOAR Playbook Generator", layout="wide")
-st.caption("Built by Srinivas")
+st.caption("Built by Accenture")
 
 # -------------------------------------------------
 # API CONFIG
