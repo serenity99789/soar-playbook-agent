@@ -17,19 +17,6 @@ st.set_page_config(page_title="SOAR Playbook Generator", layout="wide")
 st.caption("Built by Srinivas")
 
 # -------------------------------------------------
-# SESSION STATE INIT
-# -------------------------------------------------
-for key in [
-    "blocks",
-    "documentation",
-    "diagram_code",
-    "irp_summary",
-    "generated"
-]:
-    if key not in st.session_state:
-        st.session_state[key] = None
-
-# -------------------------------------------------
 # API CONFIG
 # -------------------------------------------------
 API_KEY = os.getenv("GEMINI_API_KEY")
@@ -205,16 +192,15 @@ if mode == "IRP (Document Upload)":
             )
 
         with st.spinner("🧠 Extracting actionable IRP content..."):
-            st.session_state.irp_summary = client.models.generate_content(
+            irp_summary = client.models.generate_content(
                 model="models/gemini-2.5-flash",
                 contents=build_irp_extraction_prompt(raw)
             ).text
 
         with st.expander("📄 Extracted IRP Summary", expanded=False):
-            st.markdown(st.session_state.irp_summary)
+            st.markdown(irp_summary)
 
-        input_text = st.session_state.irp_summary
-
+        input_text = irp_summary
 else:
     input_text = st.text_area(
         "Input",
@@ -225,6 +211,10 @@ else:
 # ---------- GENERATE PLAYBOOK ----------
 if st.button("Generate Playbook"):
 
+    if not input_text.strip():
+        st.warning("Please provide input.")
+        st.stop()
+
     with st.spinner("⚙️ Generating SOAR playbook logic..."):
         response = client.models.generate_content(
             model="models/gemini-2.5-flash",
@@ -234,38 +224,33 @@ if st.button("Generate Playbook"):
             )
         )
 
-    data = parse_model_output(response.text)
-
-    st.session_state.blocks = data["blocks"]
-    st.session_state.documentation = data["documentation"]
-    st.session_state.diagram_code = generate_mermaid_diagram(data["blocks"])
-    st.session_state.generated = True
-
-# ---------- RENDER OUTPUT (PERSISTENT) ----------
-if st.session_state.generated:
+    with st.spinner("🧩 Rendering outputs..."):
+        data = parse_model_output(response.text)
+        blocks = data["blocks"]
+        documentation = data["documentation"]
 
     st.success("Playbook generated")
 
     st.header("🧩 Playbook Steps")
-    for i, b in enumerate(st.session_state.blocks, start=1):
+    for i, b in enumerate(blocks, start=1):
         with st.expander(f"Step {i}: {b['block_name']}"):
             st.markdown(b["purpose"])
 
     st.header("📌 Workflow Summary")
-    for step in generate_workflow_steps(st.session_state.blocks):
+    for step in generate_workflow_steps(blocks):
         st.markdown(step)
 
     st.header("🔗 SOAR Playbook Workflow")
-    render_mermaid(st.session_state.diagram_code)
+    render_mermaid(generate_mermaid_diagram(blocks))
 
     st.header("📄 Playbook Documentation (Detailed)")
     with st.expander("View Documentation", expanded=True):
         st.markdown(
-            f"<div style='font-size:16px;line-height:1.6'>{st.session_state.documentation}</div>",
+            f"<div style='font-size:16px;line-height:1.6'>{documentation}</div>",
             unsafe_allow_html=True
         )
 
-    pdf_bytes = generate_doc_pdf(st.session_state.documentation)
+    pdf_bytes = generate_doc_pdf(documentation)
     st.download_button(
         "⬇️ Download Playbook Documentation (PDF)",
         data=pdf_bytes,
