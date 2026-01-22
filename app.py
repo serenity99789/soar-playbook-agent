@@ -60,30 +60,26 @@ def parse_model_output(text: str):
 # WORKFLOW SUMMARY
 # -------------------------------------------------
 def generate_workflow_steps(blocks):
-    steps = []
-    for i, block in enumerate(blocks, start=1):
-        steps.append(f"{i}. {block['block_name']} – {block['purpose']}")
-    return steps
+    return [
+        f"{i}. {b['block_name']} – {b['purpose']}"
+        for i, b in enumerate(blocks, start=1)
+    ]
 
 # -------------------------------------------------
 # MERMAID PLAYBOOK (COLOR CODED)
 # -------------------------------------------------
 def generate_mermaid_diagram(blocks):
-    lines = []
-    lines.append("flowchart LR")
+    lines = ["flowchart LR"]
 
-    # Block nodes
     for i, block in enumerate(blocks):
         label = block["block_name"].replace('"', "").replace("_", " ")
         lines.append(f'B{i}["{label}"]:::enrich')
         if i > 0:
             lines.append(f'B{i-1} --> B{i}')
 
-    # Decision
     lines.append('D1{"Threat Confidence?"}:::decision')
     lines.append(f'B{len(blocks)-1} --> D1')
 
-    # High confidence path
     lines.append('HC["Auto Containment"]:::contain')
     lines.append('HC2["Disable / Block Entity"]:::contain')
     lines.append('HC3["Preserve Evidence"]:::evidence')
@@ -92,7 +88,6 @@ def generate_mermaid_diagram(blocks):
     lines.append('D1 -->|High| HC')
     lines.append('HC --> HC2 --> HC3 --> HC4')
 
-    # Low / Medium confidence path
     lines.append('LC["Manual Review"]:::manual')
     lines.append('LC2["L1 Analysis"]:::manual')
     lines.append('LC3["Close or Escalate"]:::notify')
@@ -100,7 +95,6 @@ def generate_mermaid_diagram(blocks):
     lines.append('D1 -->|Low / Medium| LC')
     lines.append('LC --> LC2 --> LC3')
 
-    # Styles
     lines.append("classDef enrich fill:#2563eb,color:#ffffff,stroke:#1e3a8a,stroke-width:2px")
     lines.append("classDef decision fill:#f59e0b,color:#000000,stroke:#b45309,stroke-width:3px")
     lines.append("classDef contain fill:#dc2626,color:#ffffff,stroke:#7f1d1d,stroke-width:3px")
@@ -111,9 +105,9 @@ def generate_mermaid_diagram(blocks):
     return "\n".join(lines)
 
 # -------------------------------------------------
-# MERMAID RENDERER
+# MERMAID RENDER + SVG DOWNLOAD
 # -------------------------------------------------
-def render_mermaid(mermaid_code):
+def render_mermaid_with_download(mermaid_code):
     html = f"""
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
@@ -121,18 +115,43 @@ def render_mermaid(mermaid_code):
         startOnLoad: true,
         theme: "base",
         flowchart: {{
-          curve: "basis",
           nodeSpacing: 60,
-          rankSpacing: 80
+          rankSpacing: 90
         }}
       }});
     </script>
 
-    <div class="mermaid">
+    <div id="diagram" class="mermaid">
     {mermaid_code}
     </div>
+
+    <br/>
+
+    <button onclick="downloadSVG()">Download Workflow Diagram (SVG)</button>
+
+    <script>
+    function downloadSVG() {{
+        const svg = document.querySelector("#diagram svg");
+        if (!svg) {{
+            alert("Diagram not ready yet.");
+            return;
+        }}
+        const serializer = new XMLSerializer();
+        const source = serializer.serializeToString(svg);
+        const blob = new Blob([source], {{type: "image/svg+xml;charset=utf-8"}});
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "soar_playbook_workflow.svg";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }}
+    </script>
     """
-    components.html(html, height=650, scrolling=True)
+    components.html(html, height=720, scrolling=True)
 
 # -------------------------------------------------
 # MAIN UI
@@ -187,10 +206,10 @@ if st.button("Generate Playbook"):
         st.markdown(step)
 
     # -------------------------------------------------
-    # COLORED SOAR PLAYBOOK DIAGRAM
+    # PLAYBOOK DIAGRAM + DOWNLOAD
     # -------------------------------------------------
     st.header("🔗 SOAR Playbook Workflow")
-    render_mermaid(generate_mermaid_diagram(blocks))
+    render_mermaid_with_download(generate_mermaid_diagram(blocks))
 
     # -------------------------------------------------
     # DOCUMENTATION
