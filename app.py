@@ -22,12 +22,22 @@ if not API_KEY:
 client = genai.Client(api_key=API_KEY)
 
 # -------------------------------------------------
-# PROMPT
+# PROMPT BUILDER (MODE AWARE)
 # -------------------------------------------------
-def build_prompt(use_case: str) -> str:
+def build_prompt(input_text: str, mode: str) -> str:
+    if mode == "Use Case":
+        context = "You are given a SOAR use case description."
+    else:
+        context = (
+            "You are given an Incident Response Procedure (IRP / SOP). "
+            "Extract, normalize, and convert it into SOAR playbook logic."
+        )
+
     return f"""
 Return ONLY valid JSON.
 No markdown. No backticks.
+
+{context}
 
 Schema:
 {{
@@ -45,8 +55,8 @@ Schema:
   "documentation": ""
 }}
 
-Use case:
-{use_case}
+Input:
+{input_text}
 """
 
 # -------------------------------------------------
@@ -126,7 +136,6 @@ def render_mermaid_with_download(mermaid_code):
     </div>
 
     <br/>
-
     <button onclick="downloadSVG()">Download Workflow Diagram (SVG)</button>
 
     <script>
@@ -151,29 +160,41 @@ def render_mermaid_with_download(mermaid_code):
     }}
     </script>
     """
-    components.html(html, height=720, scrolling=True)
+    components.html(html, height=600, scrolling=True)
 
 # -------------------------------------------------
 # MAIN UI
 # -------------------------------------------------
 st.title("🛡️ SOAR Playbook Generator")
 
-use_case = st.text_area(
-    "SOAR Use Case Description",
-    height=220,
-    placeholder="Account Compromise – Brute Force Success"
+mode = st.radio(
+    "Input Type",
+    ["Use Case", "IRP / SOP"],
+    horizontal=True
+)
+
+placeholder_text = (
+    "Account Compromise – Brute Force Success"
+    if mode == "Use Case"
+    else "Paste Incident Response Procedure (steps, conditions, actions...)"
+)
+
+input_text = st.text_area(
+    "Input",
+    height=260,
+    placeholder=placeholder_text
 )
 
 if st.button("Generate Playbook"):
 
-    if not use_case.strip():
-        st.warning("Please enter a use case.")
+    if not input_text.strip():
+        st.warning("Please provide input text.")
         st.stop()
 
     with st.spinner("Generating playbook..."):
         response = client.models.generate_content(
             model="models/gemini-2.5-flash",
-            contents=build_prompt(use_case)
+            contents=build_prompt(input_text, mode)
         )
 
     try:
@@ -206,7 +227,7 @@ if st.button("Generate Playbook"):
         st.markdown(step)
 
     # -------------------------------------------------
-    # PLAYBOOK DIAGRAM + DOWNLOAD
+    # PLAYBOOK DIAGRAM
     # -------------------------------------------------
     st.header("🔗 SOAR Playbook Workflow")
     render_mermaid_with_download(generate_mermaid_diagram(blocks))
