@@ -27,7 +27,6 @@ defaults = {
     "generated": False,
     "error": None,
 }
-
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
@@ -99,8 +98,8 @@ def safe_parse_json(text: str):
     try:
         cleaned = re.sub(r"```json|```", "", text).strip()
         data = json.loads(cleaned)
-        if not isinstance(data, dict) or "blocks" not in data:
-            raise ValueError("Missing 'blocks' key")
+        if "blocks" not in data:
+            raise ValueError("Missing blocks")
         return data, None
     except Exception as e:
         return None, str(e)
@@ -117,16 +116,16 @@ def extract_text_from_txt(file):
     return StringIO(file.getvalue().decode("utf-8")).read()
 
 # -------------------------------------------------
-# DOCUMENTATION BUILDER
+# DOCUMENTATION
 # -------------------------------------------------
 def build_full_documentation(blocks):
-    sections = []
-    sections.append("SOAR PLAYBOOK DOCUMENTATION\n")
-    sections.append("1. Overview\nThis document defines an automated SOAR response workflow.\n")
+    parts = []
+    parts.append("SOAR PLAYBOOK DOCUMENTATION\n")
+    parts.append("1. Overview\nThis document defines an automated SOAR incident response workflow.\n")
 
-    sections.append("2. Workflow Steps\n")
+    parts.append("2. Workflow Steps\n")
     for i, b in enumerate(blocks, start=1):
-        sections.append(
+        parts.append(
             f"Step {i}: {b['block_name']}\n"
             f"Purpose: {b['purpose']}\n"
             f"Inputs: {', '.join(b['inputs'])}\n"
@@ -136,27 +135,58 @@ def build_full_documentation(blocks):
             f"Analyst Notes: {b['analyst_notes']}\n"
         )
 
-    sections.append("3. Decision Logic & Escalation\nHigh confidence incidents are auto-contained.")
-    return "\n\n".join(sections)
+    parts.append("3. Decision & Escalation\nHigh confidence incidents are auto-contained.\n")
+    return "\n\n".join(parts)
 
 # -------------------------------------------------
-# MERMAID
+# MERMAID DIAGRAM (FULL SOAR STYLE)
 # -------------------------------------------------
 def generate_mermaid_diagram(blocks):
     lines = ["flowchart LR"]
+
+    # Main flow
     for i, b in enumerate(blocks):
-        lines.append(f'B{i}["{b["block_name"]}"]:::step')
+        label = b["block_name"].replace("_", " ")
+        lines.append(f'B{i}["{label}"]:::core')
         if i > 0:
             lines.append(f'B{i-1} --> B{i}')
 
-    lines.append("classDef step fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px")
+    # Decision
+    lines.append('D1{"Threat Confidence?"}:::decision')
+    lines.append(f'B{len(blocks)-1} --> D1')
+
+    # High confidence branch
+    lines.append('HC1["Auto Containment"]:::contain')
+    lines.append('HC2["Disable / Block Entity"]:::contain')
+    lines.append('HC3["Preserve Evidence"]:::evidence')
+    lines.append('HC4["Notify L2 / IR"]:::notify')
+
+    lines.append('D1 -->|High| HC1')
+    lines.append('HC1 --> HC2 --> HC3 --> HC4')
+
+    # Low / Medium branch
+    lines.append('LC1["Manual Review"]:::manual')
+    lines.append('LC2["L1 Analysis"]:::manual')
+    lines.append('LC3["Close or Escalate"]:::notify')
+
+    lines.append('D1 -->|Low / Medium| LC1')
+    lines.append('LC1 --> LC2 --> LC3')
+
+    # Styles
+    lines.append("classDef core fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px")
+    lines.append("classDef decision fill:#f59e0b,color:#000,stroke:#b45309,stroke-width:3px")
+    lines.append("classDef contain fill:#dc2626,color:#fff,stroke:#7f1d1d,stroke-width:3px")
+    lines.append("classDef evidence fill:#7c3aed,color:#fff,stroke:#4c1d95,stroke-width:2px")
+    lines.append("classDef notify fill:#16a34a,color:#fff,stroke:#14532d,stroke-width:2px")
+    lines.append("classDef manual fill:#6b7280,color:#fff,stroke:#374151,stroke-width:2px")
+
     return "\n".join(lines)
 
 def render_mermaid(code):
     html = f"""
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
-      mermaid.initialize({{ startOnLoad:true }});
+      mermaid.initialize({{ startOnLoad:true, theme:"base" }});
       function downloadSVG() {{
         const svg = document.querySelector(".mermaid svg");
         const serializer = new XMLSerializer();
@@ -168,10 +198,14 @@ def render_mermaid(code):
         a.click();
       }}
     </script>
-    <button onclick="downloadSVG()">⬇️ Download Workflow (SVG)</button>
+
+    <button onclick="downloadSVG()" style="margin-bottom:10px;">
+        ⬇️ Download Workflow (SVG)
+    </button>
+
     <div class="mermaid">{code}</div>
     """
-    components.html(html, height=600, scrolling=True)
+    components.html(html, height=650, scrolling=True)
 
 # -------------------------------------------------
 # PDF
@@ -201,7 +235,7 @@ input_text = ""
 if mode == "IRP (Document Upload)":
     uploaded = st.file_uploader("Upload IRP", type=["pdf", "docx", "txt"])
     if uploaded:
-        with st.spinner("Reading IRP..."):
+        with st.spinner("📥 Reading IRP..."):
             raw = (
                 extract_text_from_pdf(uploaded)
                 if uploaded.type == "application/pdf"
@@ -210,25 +244,21 @@ if mode == "IRP (Document Upload)":
                 else extract_text_from_txt(uploaded)
             )
 
-        with st.spinner("Extracting actionable steps..."):
+        with st.spinner("🧠 Extracting actionable steps..."):
             st.session_state.irp_summary = client.models.generate_content(
                 model="models/gemini-2.5-flash",
                 contents=build_irp_extraction_prompt(raw)
             ).text
 
-        with st.expander("Extracted IRP Summary", expanded=True):
+        with st.expander("📄 Extracted IRP Summary (Used as Input)", expanded=True):
             st.markdown(st.session_state.irp_summary)
 
         input_text = st.session_state.irp_summary
 else:
     input_text = st.text_area("Use Case", height=240)
 
-# -------------------------------------------------
-# GENERATE
-# -------------------------------------------------
 if st.button("Generate Playbook"):
-    st.session_state.error = None
-    with st.spinner("Generating playbook..."):
+    with st.spinner("⚙️ Generating SOAR playbook logic..."):
         resp = client.models.generate_content(
             model="models/gemini-2.5-flash",
             contents=build_playbook_prompt(input_text, mode)
@@ -236,27 +266,20 @@ if st.button("Generate Playbook"):
 
     data, err = safe_parse_json(resp.text)
     if err:
-        st.session_state.error = "Model returned invalid output. Try again."
-        st.session_state.generated = False
+        st.error("Model returned invalid output. Try again.")
     else:
         st.session_state.blocks = data["blocks"]
         st.session_state.diagram_code = generate_mermaid_diagram(data["blocks"])
         st.session_state.documentation = build_full_documentation(data["blocks"])
         st.session_state.generated = True
 
-# -------------------------------------------------
-# OUTPUT
-# -------------------------------------------------
-if st.session_state.error:
-    st.error(st.session_state.error)
-
 if st.session_state.generated:
     st.success("Playbook generated")
 
-    st.header("SOAR Workflow")
+    st.header("🔗 SOAR Workflow")
     render_mermaid(st.session_state.diagram_code)
 
-    st.header("Playbook Documentation")
+    st.header("📄 Playbook Documentation")
     with st.expander("View Documentation", expanded=True):
         st.markdown(st.session_state.documentation)
 
