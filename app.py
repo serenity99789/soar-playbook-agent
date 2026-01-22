@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import unicodedata
 import streamlit as st
 import streamlit.components.v1 as components
 from google import genai
@@ -27,13 +28,61 @@ if not API_KEY:
 client = genai.Client(api_key=API_KEY)
 
 # -------------------------------------------------
+# TEXT SANITIZATION (CRITICAL FIX)
+# -------------------------------------------------
+def clean_text(text: str) -> str:
+    if not text:
+        return ""
+
+    # Normalize unicode
+    text = unicodedata.normalize("NFKC", text)
+
+    # Remove null bytes
+    text = text.replace("\x00", "")
+
+    # Remove non-printable/control chars
+    text = "".join(ch for ch in text if ch.isprintable())
+
+    # Collapse excessive whitespace
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+
+    return text.strip()
+
+# -------------------------------------------------
 # PROMPTS
 # -------------------------------------------------
+def build_irp_maker_prompt(clean_irp: str) -> str:
+    return f"""
+You are an IRP ingestion agent.
+
+Your job:
+- Read the Incident Response Procedure below
+- Extract ONLY operational response logic:
+  - detection & intake
+  - triage steps
+  - decision points
+  - containment actions
+  - escalation paths
+  - evidence handling
+- Ignore:
+  - policy text
+  - legal language
+  - roles & responsibilities
+  - repetition and fluff
+
+Return a compact, analyst-readable IRP summary.
+No markdown. Plain text only.
+
+IRP:
+{clean_irp}
+"""
+
 def build_playbook_prompt(text: str, mode: str) -> str:
     context = (
         "You are given a SOAR use case description."
         if mode == "Use Case"
-        else "You are given an Incident Response Procedure. Convert it into SOAR playbook logic."
+        else "You are given a normalized Incident Response Procedure."
     )
 
     return f"""
@@ -62,24 +111,6 @@ Input:
 {text}
 """
 
-def build_irp_extraction_prompt(raw_text: str) -> str:
-    return f"""
-You are given an Incident Response Procedure document.
-
-Extract ONLY:
-- actionable response steps
-- decision points
-- escalation logic
-- containment actions
-
-Ignore policy, legal, and background text.
-
-Return a clean analyst-readable summary.
-
-Text:
-{raw_text}
-"""
-
 # -------------------------------------------------
 # HELPERS
 # -------------------------------------------------
@@ -96,7 +127,7 @@ def extract_text_from_docx(file):
     return "\n".join(p.text for p in doc.paragraphs)
 
 def extract_text_from_txt(file):
-    return StringIO(file.getvalue().decode("utf-8")).read()
+    return StringIO(file.getvalue().decode("utf-8", errors="ignore")).read()
 
 def generate_workflow_steps(blocks):
     return [
@@ -171,18 +202,18 @@ st.title("🛡️ SOAR Playbook Generator")
 
 mode = st.radio(
     "Input Type",
-    ["Use Case", "IRP / SOP (Text)", "IRP (Document Upload)"],
+    ["Use Case", "IRP (Document Upload)"],
     horizontal=True
 )
 
 input_text = ""
 
-# ---------- IRP DOCUMENT UPLOAD ----------
+# ---------- IRP DOCUMENT PIPELINE ----------
 if mode == "IRP (Document Upload)":
     uploaded = st.file_uploader("Upload IRP (PDF / DOCX / TXT)", type=["pdf", "docx", "txt"])
 
     if uploaded:
-        with st.spinner("📥 Reading document..."):
+        with st.spinner("📥 Extracting raw text..."):
             raw = (
                 extract_text_from_pdf(uploaded)
                 if uploaded.type == "application/pdf"
@@ -191,31 +222,40 @@ if mode == "IRP (Document Upload)":
                 else extract_text_from_txt(uploaded)
             )
 
-        with st.spinner("🧠 Extracting actionable IRP content..."):
+        clean_irp = clean_text(raw)
+
+        if not clean_irp:
+            st.error("Could not extract readable text from this document.")
+            st.stop()
+
+        with st.spinner("🧠 IRP Maker Agent analyzing document..."):
             irp_summary = client.models.generate_content(
                 model="models/gemini-2.5-flash",
-                contents=build_irp_extraction_prompt(raw)
+                contents=build_irp_maker_prompt(clean_irp)
             ).text
 
-        with st.expander("📄 Extracted IRP Summary", expanded=False):
+        irp_summary = clean_text(irp_summary)
+
+        with st.expander("📄 Normalized IRP (Agent Output)", expanded=False):
             st.markdown(irp_summary)
 
         input_text = irp_summary
+
 else:
     input_text = st.text_area(
-        "Input",
+        "SOAR Use Case",
         height=260,
         placeholder="Account Compromise – Brute Force Success"
     )
 
-# ---------- GENERATE PLAYBOOK ----------
+# ---------- PLAYBOOK GENERATION ----------
 if st.button("Generate Playbook"):
 
     if not input_text.strip():
         st.warning("Please provide input.")
         st.stop()
 
-    with st.spinner("⚙️ Generating SOAR playbook logic..."):
+    with st.spinner("⚙️ Generating SOAR playbook..."):
         response = client.models.generate_content(
             model="models/gemini-2.5-flash",
             contents=build_playbook_prompt(
@@ -224,10 +264,9 @@ if st.button("Generate Playbook"):
             )
         )
 
-    with st.spinner("🧩 Rendering outputs..."):
-        data = parse_model_output(response.text)
-        blocks = data["blocks"]
-        documentation = data["documentation"]
+    data = parse_model_output(response.text)
+    blocks = data["blocks"]
+    documentation = data["documentation"]
 
     st.success("Playbook generated")
 
