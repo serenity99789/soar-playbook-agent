@@ -17,17 +17,18 @@ st.set_page_config(page_title="SOAR Playbook Generator", layout="wide")
 st.caption("Built by Srinivas")
 
 # -------------------------------------------------
-# SESSION STATE INIT
+# SESSION STATE INIT (STRICT TYPES)
 # -------------------------------------------------
-for key in [
-    "blocks",
-    "documentation",
-    "diagram_code",
-    "irp_summary",
-    "generated"
-]:
-    if key not in st.session_state:
-        st.session_state[key] = None
+if "blocks" not in st.session_state:
+    st.session_state.blocks = None
+if "documentation" not in st.session_state:
+    st.session_state.documentation = None
+if "diagram_code" not in st.session_state:
+    st.session_state.diagram_code = None
+if "irp_summary" not in st.session_state:
+    st.session_state.irp_summary = None
+if "generated" not in st.session_state:
+    st.session_state.generated = False  # IMPORTANT: boolean
 
 # -------------------------------------------------
 # API CONFIG
@@ -111,21 +112,21 @@ def extract_text_from_txt(file):
     return StringIO(file.getvalue().decode("utf-8")).read()
 
 # -------------------------------------------------
-# DOCUMENTATION BUILDER
+# DOCUMENTATION BUILDER (2–3 PAGE STYLE)
 # -------------------------------------------------
 def build_full_documentation(blocks):
     sections = []
 
     sections.append(
         "1. Playbook Overview\n"
-        "This SOAR playbook defines the automated and semi-automated response workflow for the "
-        "identified security incident, including enrichment, decision-making, containment, and escalation."
+        "This SOAR playbook defines an end-to-end automated and semi-automated incident response workflow. "
+        "It standardizes investigation, decision-making, containment, and escalation activities."
     )
 
     sections.append(
         "2. Scope and Trigger Conditions\n"
-        "This playbook is triggered by security alerts originating from SIEM, EDR, or identity platforms "
-        "indicating potential malicious activity."
+        "This playbook is triggered by alerts from SIEM, EDR, IAM, or security monitoring platforms that "
+        "indicate suspicious or malicious activity requiring investigation."
     )
 
     sections.append("3. Workflow Description")
@@ -139,11 +140,11 @@ def build_full_documentation(blocks):
 
     sections.append(
         "4. Decision Logic\n"
-        "Threat confidence is evaluated using enrichment results and contextual indicators to determine "
-        "automated containment versus manual analyst review."
+        "Threat confidence is evaluated using enrichment data, contextual risk indicators, and detection "
+        "signals to determine automated containment versus manual analyst review."
     )
 
-    sections.append("5. Containment and Escalation")
+    sections.append("5. Containment, Escalation, and SLA Impact")
     for b in blocks:
         sections.append(
             f"{b['block_name']}:\n"
@@ -271,8 +272,8 @@ else:
         placeholder="Account Compromise – Brute Force Success"
     )
 
-# ---------- GENERATE ----------
-if st.button("Generate Playbook", disabled=st.session_state.generated):
+# ---------- GENERATE BUTTON ----------
+if st.button("Generate Playbook", disabled=bool(st.session_state.generated)):
     with st.spinner("⚙️ Generating SOAR playbook logic..."):
         response = client.models.generate_content(
             model="models/gemini-2.5-flash",
