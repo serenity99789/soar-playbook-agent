@@ -19,16 +19,18 @@ st.caption("Built by Srinivas")
 # -------------------------------------------------
 # SESSION STATE INIT
 # -------------------------------------------------
-if "blocks" not in st.session_state:
-    st.session_state.blocks = None
-if "documentation" not in st.session_state:
-    st.session_state.documentation = None
-if "diagram_code" not in st.session_state:
-    st.session_state.diagram_code = None
-if "irp_summary" not in st.session_state:
-    st.session_state.irp_summary = None
-if "generated" not in st.session_state:
-    st.session_state.generated = False
+defaults = {
+    "blocks": None,
+    "documentation": None,
+    "diagram_code": None,
+    "irp_summary": None,
+    "generated": False,
+    "error": None,
+}
+
+for k, v in defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 # -------------------------------------------------
 # API CONFIG
@@ -77,17 +79,14 @@ Input:
 
 def build_irp_extraction_prompt(raw_text: str) -> str:
     return f"""
-You are given an Incident Response Procedure document.
+Extract ONLY actionable incident response steps from the following IRP.
 
-Extract ONLY:
-- actionable response steps
-- decision points
-- escalation logic
-- containment actions
+Ignore:
+- policy language
+- legal text
+- background explanation
 
-Ignore policy, legal, and background text.
-
-Return a clean analyst-readable summary.
+Return a concise analyst-ready response flow.
 
 Text:
 {raw_text}
@@ -96,9 +95,15 @@ Text:
 # -------------------------------------------------
 # HELPERS
 # -------------------------------------------------
-def parse_model_output(text: str):
-    cleaned = re.sub(r"```json|```", "", text).strip()
-    return json.loads(cleaned)
+def safe_parse_json(text: str):
+    try:
+        cleaned = re.sub(r"```json|```", "", text).strip()
+        data = json.loads(cleaned)
+        if not isinstance(data, dict) or "blocks" not in data:
+            raise ValueError("Missing 'blocks' key")
+        return data, None
+    except Exception as e:
+        return None, str(e)
 
 def extract_text_from_pdf(file):
     reader = PdfReader(file)
@@ -112,158 +117,91 @@ def extract_text_from_txt(file):
     return StringIO(file.getvalue().decode("utf-8")).read()
 
 # -------------------------------------------------
-# DOCUMENTATION BUILDER (MULTI-PAGE)
+# DOCUMENTATION BUILDER
 # -------------------------------------------------
 def build_full_documentation(blocks):
     sections = []
+    sections.append("SOAR PLAYBOOK DOCUMENTATION\n")
+    sections.append("1. Overview\nThis document defines an automated SOAR response workflow.\n")
 
-    sections.append(
-        "1. Playbook Overview\n"
-        "This SOAR playbook defines an end-to-end incident response workflow including detection, "
-        "analysis, containment, escalation, and recovery."
-    )
-
-    sections.append(
-        "2. Scope and Triggers\n"
-        "Triggered by alerts from SIEM, EDR, IAM, or security monitoring platforms."
-    )
-
-    sections.append("3. Workflow Steps")
+    sections.append("2. Workflow Steps\n")
     for i, b in enumerate(blocks, start=1):
         sections.append(
             f"Step {i}: {b['block_name']}\n"
             f"Purpose: {b['purpose']}\n"
             f"Inputs: {', '.join(b['inputs'])}\n"
-            f"Outputs: {', '.join(b['outputs'])}"
-        )
-
-    sections.append("4. Decision & Containment Logic")
-    sections.append(
-        "High confidence incidents are auto-contained, while low/medium confidence "
-        "incidents are routed for analyst review."
-    )
-
-    sections.append("5. SLA, Escalation & Analyst Guidance")
-    for b in blocks:
-        sections.append(
-            f"{b['block_name']}:\n"
+            f"Outputs: {', '.join(b['outputs'])}\n"
             f"SLA Impact: {b['sla_impact']}\n"
             f"Failure Handling: {b['failure_handling']}\n"
-            f"Analyst Notes: {b['analyst_notes']}"
+            f"Analyst Notes: {b['analyst_notes']}\n"
         )
 
+    sections.append("3. Decision Logic & Escalation\nHigh confidence incidents are auto-contained.")
     return "\n\n".join(sections)
 
 # -------------------------------------------------
-# MERMAID DIAGRAM
+# MERMAID
 # -------------------------------------------------
 def generate_mermaid_diagram(blocks):
     lines = ["flowchart LR"]
-
-    for i, block in enumerate(blocks):
-        label = block["block_name"].replace("_", " ")
-        lines.append(f'B{i}["{label}"]:::enrich')
+    for i, b in enumerate(blocks):
+        lines.append(f'B{i}["{b["block_name"]}"]:::step')
         if i > 0:
             lines.append(f'B{i-1} --> B{i}')
 
-    lines.append('D1{"Threat Confidence?"}:::decision')
-    lines.append(f'B{len(blocks)-1} --> D1')
-
-    lines.append('HC["Auto Containment"]:::contain')
-    lines.append('HC2["Disable / Block Entity"]:::contain')
-    lines.append('HC3["Preserve Evidence"]:::evidence')
-    lines.append('HC4["Notify L2 / IR"]:::notify')
-
-    lines.append('D1 -->|High| HC')
-    lines.append('HC --> HC2 --> HC3 --> HC4')
-
-    lines.append('LC["Manual Review"]:::manual')
-    lines.append('LC2["L1 Analysis"]:::manual')
-    lines.append('LC3["Close or Escalate"]:::notify')
-
-    lines.append('D1 -->|Low / Medium| LC')
-    lines.append('LC --> LC2 --> LC3')
-
-    lines.append("classDef enrich fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px")
-    lines.append("classDef decision fill:#f59e0b,color:#000,stroke:#b45309,stroke-width:3px")
-    lines.append("classDef contain fill:#dc2626,color:#fff,stroke:#7f1d1d,stroke-width:3px")
-    lines.append("classDef evidence fill:#7c3aed,color:#fff,stroke:#4c1d95,stroke-width:2px")
-    lines.append("classDef notify fill:#16a34a,color:#fff,stroke:#14532d,stroke-width:2px")
-    lines.append("classDef manual fill:#6b7280,color:#fff,stroke:#374151,stroke-width:2px")
-
+    lines.append("classDef step fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px")
     return "\n".join(lines)
 
 def render_mermaid(code):
     html = f"""
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
-      mermaid.initialize({{ startOnLoad:true, theme:"base" }});
-
+      mermaid.initialize({{ startOnLoad:true }});
       function downloadSVG() {{
         const svg = document.querySelector(".mermaid svg");
-        if (!svg) return;
         const serializer = new XMLSerializer();
         const source = serializer.serializeToString(svg);
-        const blob = new Blob([source], {{ type: "image/svg+xml;charset=utf-8" }});
-        const url = URL.createObjectURL(blob);
-
+        const blob = new Blob([source], {{ type: "image/svg+xml" }});
         const a = document.createElement("a");
-        a.href = url;
+        a.href = URL.createObjectURL(blob);
         a.download = "soar_workflow.svg";
         a.click();
-        URL.revokeObjectURL(url);
       }}
     </script>
-
-    <button onclick="downloadSVG()" style="
-        margin-bottom:10px;
-        padding:8px 14px;
-        font-weight:600;
-        border-radius:6px;
-        border:1px solid #ccc;
-        cursor:pointer;
-    ">
-        ⬇️ Download Workflow Diagram (SVG)
-    </button>
-
+    <button onclick="downloadSVG()">⬇️ Download Workflow (SVG)</button>
     <div class="mermaid">{code}</div>
     """
     components.html(html, height=600, scrolling=True)
 
 # -------------------------------------------------
-# PDF GENERATOR
+# PDF
 # -------------------------------------------------
-def generate_doc_pdf(text: str) -> bytes:
-    buffer = BytesIO()
+def generate_doc_pdf(text: str):
+    buf = BytesIO()
     styles = getSampleStyleSheet()
     body = ParagraphStyle("Body", parent=styles["Normal"], spaceAfter=12)
 
     story = []
-    for para in text.split("\n\n"):
-        story.append(Paragraph(para.replace("\n", "<br/>"), body))
+    for p in text.split("\n\n"):
+        story.append(Paragraph(p.replace("\n", "<br/>"), body))
         story.append(Spacer(1, 12))
 
-    SimpleDocTemplate(buffer).build(story)
-    buffer.seek(0)
-    return buffer.read()
+    SimpleDocTemplate(buf).build(story)
+    buf.seek(0)
+    return buf.read()
 
 # -------------------------------------------------
 # UI
 # -------------------------------------------------
 st.title("🛡️ SOAR Playbook Generator")
 
-mode = st.radio(
-    "Input Type",
-    ["Use Case", "IRP / SOP (Text)", "IRP (Document Upload)"],
-    horizontal=True
-)
-
+mode = st.radio("Input Type", ["Use Case", "IRP (Document Upload)"], horizontal=True)
 input_text = ""
 
 if mode == "IRP (Document Upload)":
-    uploaded = st.file_uploader("Upload IRP (PDF / DOCX / TXT)", type=["pdf", "docx", "txt"])
+    uploaded = st.file_uploader("Upload IRP", type=["pdf", "docx", "txt"])
     if uploaded:
-        with st.spinner("📥 Reading document..."):
+        with st.spinner("Reading IRP..."):
             raw = (
                 extract_text_from_pdf(uploaded)
                 if uploaded.type == "application/pdf"
@@ -272,51 +210,59 @@ if mode == "IRP (Document Upload)":
                 else extract_text_from_txt(uploaded)
             )
 
-        with st.spinner("🧠 Extracting actionable IRP content..."):
+        with st.spinner("Extracting actionable steps..."):
             st.session_state.irp_summary = client.models.generate_content(
                 model="models/gemini-2.5-flash",
                 contents=build_irp_extraction_prompt(raw)
             ).text
 
-        with st.expander("📄 Extracted IRP Summary (Used as Input)", expanded=True):
+        with st.expander("Extracted IRP Summary", expanded=True):
             st.markdown(st.session_state.irp_summary)
 
         input_text = st.session_state.irp_summary
 else:
-    input_text = st.text_area("Input", height=260)
+    input_text = st.text_area("Use Case", height=240)
 
-# ---------- GENERATE ----------
-if st.button("Generate Playbook", disabled=bool(st.session_state.generated)):
-    with st.spinner("⚙️ Generating SOAR playbook logic..."):
-        response = client.models.generate_content(
+# -------------------------------------------------
+# GENERATE
+# -------------------------------------------------
+if st.button("Generate Playbook"):
+    st.session_state.error = None
+    with st.spinner("Generating playbook..."):
+        resp = client.models.generate_content(
             model="models/gemini-2.5-flash",
-            contents=build_playbook_prompt(
-                input_text,
-                "Use Case" if mode == "Use Case" else "IRP"
-            )
+            contents=build_playbook_prompt(input_text, mode)
         )
 
-    data = parse_model_output(response.text)
+    data, err = safe_parse_json(resp.text)
+    if err:
+        st.session_state.error = "Model returned invalid output. Try again."
+        st.session_state.generated = False
+    else:
+        st.session_state.blocks = data["blocks"]
+        st.session_state.diagram_code = generate_mermaid_diagram(data["blocks"])
+        st.session_state.documentation = build_full_documentation(data["blocks"])
+        st.session_state.generated = True
 
-    st.session_state.blocks = data["blocks"]
-    st.session_state.diagram_code = generate_mermaid_diagram(data["blocks"])
-    st.session_state.documentation = build_full_documentation(data["blocks"])
-    st.session_state.generated = True
+# -------------------------------------------------
+# OUTPUT
+# -------------------------------------------------
+if st.session_state.error:
+    st.error(st.session_state.error)
 
-# ---------- OUTPUT ----------
 if st.session_state.generated:
     st.success("Playbook generated")
 
-    st.header("🔗 SOAR Workflow")
+    st.header("SOAR Workflow")
     render_mermaid(st.session_state.diagram_code)
 
-    st.header("📄 Playbook Documentation")
-    with st.expander("View Full Documentation", expanded=True):
+    st.header("Playbook Documentation")
+    with st.expander("View Documentation", expanded=True):
         st.markdown(st.session_state.documentation)
 
     st.download_button(
-        "⬇️ Download Playbook Documentation (PDF)",
+        "⬇️ Download Documentation (PDF)",
         generate_doc_pdf(st.session_state.documentation),
-        "soar_playbook_documentation.pdf",
+        "soar_playbook.pdf",
         mime="application/pdf"
     )
