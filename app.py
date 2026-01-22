@@ -57,51 +57,61 @@ def parse_model_output(text: str):
     return json.loads(cleaned)
 
 # -------------------------------------------------
-# WORKFLOW SUMMARY GENERATOR
+# WORKFLOW SUMMARY
 # -------------------------------------------------
 def generate_workflow_steps(blocks):
     steps = []
     for i, block in enumerate(blocks, start=1):
-        name = block["block_name"].replace("_", " ")
-        purpose = block["purpose"]
-        steps.append(f"{i}. {name} – {purpose}")
+        steps.append(f"{i}. {block['block_name']} – {block['purpose']}")
     return steps
 
 # -------------------------------------------------
-# MERMAID PLAYBOOK GENERATOR
+# MERMAID PLAYBOOK (COLOR CODED)
 # -------------------------------------------------
 def generate_mermaid_diagram(blocks):
     lines = []
     lines.append("flowchart LR")
 
+    # Block nodes
     for i, block in enumerate(blocks):
         label = block["block_name"].replace('"', "").replace("_", " ")
-        lines.append(f'B{i}["{label}"]')
+        lines.append(f'B{i}["{label}"]:::enrich')
         if i > 0:
             lines.append(f'B{i-1} --> B{i}')
 
-    lines.append('D1{"Threat Confidence?"}')
+    # Decision
+    lines.append('D1{"Threat Confidence?"}:::decision')
     lines.append(f'B{len(blocks)-1} --> D1')
 
-    lines.append('HC["Auto Containment"]')
-    lines.append('HC2["Disable / Block Entity"]')
-    lines.append('HC3["Preserve Evidence"]')
-    lines.append('HC4["Notify L2 / IR"]')
+    # High confidence path
+    lines.append('HC["Auto Containment"]:::contain')
+    lines.append('HC2["Disable / Block Entity"]:::contain')
+    lines.append('HC3["Preserve Evidence"]:::evidence')
+    lines.append('HC4["Notify L2 / IR"]:::notify')
 
     lines.append('D1 -->|High| HC')
     lines.append('HC --> HC2 --> HC3 --> HC4')
 
-    lines.append('LC["Manual Review"]')
-    lines.append('LC2["L1 Analysis"]')
-    lines.append('LC3["Close or Escalate"]')
+    # Low / Medium confidence path
+    lines.append('LC["Manual Review"]:::manual')
+    lines.append('LC2["L1 Analysis"]:::manual')
+    lines.append('LC3["Close or Escalate"]:::notify')
 
     lines.append('D1 -->|Low / Medium| LC')
     lines.append('LC --> LC2 --> LC3')
 
+    # Styles
+    lines.append("classDef enrich fill:#2563eb,color:#ffffff,stroke:#1e3a8a,stroke-width:2px")
+    lines.append("classDef decision fill:#f59e0b,color:#000000,stroke:#b45309,stroke-width:3px")
+    lines.append("classDef contain fill:#dc2626,color:#ffffff,stroke:#7f1d1d,stroke-width:3px")
+    lines.append("classDef evidence fill:#7c3aed,color:#ffffff,stroke:#4c1d95,stroke-width:2px")
+    lines.append("classDef notify fill:#16a34a,color:#ffffff,stroke:#14532d,stroke-width:2px")
+    lines.append("classDef manual fill:#6b7280,color:#ffffff,stroke:#374151,stroke-width:2px")
+
     return "\n".join(lines)
 
 # -------------------------------------------------
-# MERMAID RENDERER (CRITICAL FIX)
+# MERMAID RENDERER
 # -------------------------------------------------
 def render_mermaid(mermaid_code):
     html = f"""
@@ -109,11 +119,11 @@ def render_mermaid(mermaid_code):
     <script>
       mermaid.initialize({{
         startOnLoad: true,
-        theme: "default",
+        theme: "base",
         flowchart: {{
           curve: "basis",
-          nodeSpacing: 50,
-          rankSpacing: 70
+          nodeSpacing: 60,
+          rankSpacing: 80
         }}
       }});
     </script>
@@ -122,7 +132,7 @@ def render_mermaid(mermaid_code):
     {mermaid_code}
     </div>
     """
-    components.html(html, height=600, scrolling=True)
+    components.html(html, height=650, scrolling=True)
 
 # -------------------------------------------------
 # MAIN UI
@@ -158,7 +168,7 @@ if st.button("Generate Playbook"):
     st.success("Playbook generated")
 
     # -------------------------------------------------
-    # TEXTUAL PLAYBOOK STEPS
+    # TEXTUAL PLAYBOOK
     # -------------------------------------------------
     st.header("🧩 Playbook Steps")
     for i, block in enumerate(blocks, start=1):
@@ -177,12 +187,10 @@ if st.button("Generate Playbook"):
         st.markdown(step)
 
     # -------------------------------------------------
-    # ACTUAL SOAR PLAYBOOK DIAGRAM (FIXED)
+    # COLORED SOAR PLAYBOOK DIAGRAM
     # -------------------------------------------------
     st.header("🔗 SOAR Playbook Workflow")
-
-    mermaid_code = generate_mermaid_diagram(blocks)
-    render_mermaid(mermaid_code)
+    render_mermaid(generate_mermaid_diagram(blocks))
 
     # -------------------------------------------------
     # DOCUMENTATION
