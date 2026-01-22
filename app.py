@@ -154,16 +154,12 @@ def render_mermaid(mermaid_code):
     components.html(html, height=550, scrolling=True)
 
 # -------------------------------------------------
-# PDF GENERATOR (DOCUMENTATION)
+# PDF GENERATOR
 # -------------------------------------------------
 def generate_doc_pdf(text: str) -> bytes:
     buffer = BytesIO()
     styles = getSampleStyleSheet()
-    story = []
-
-    for para in text.split("\n"):
-        story.append(Paragraph(para, styles["Normal"]))
-
+    story = [Paragraph(p, styles["Normal"]) for p in text.split("\n")]
     SimpleDocTemplate(buffer).build(story)
     buffer.seek(0)
     return buffer.read()
@@ -181,23 +177,27 @@ mode = st.radio(
 
 input_text = ""
 
+# ---------- IRP DOCUMENT UPLOAD ----------
 if mode == "IRP (Document Upload)":
     uploaded = st.file_uploader("Upload IRP (PDF / DOCX / TXT)", type=["pdf", "docx", "txt"])
+
     if uploaded:
-        raw = (
-            extract_text_from_pdf(uploaded)
-            if uploaded.type == "application/pdf"
-            else extract_text_from_docx(uploaded)
-            if uploaded.type.endswith("document")
-            else extract_text_from_txt(uploaded)
-        )
+        with st.spinner("📥 Reading document..."):
+            raw = (
+                extract_text_from_pdf(uploaded)
+                if uploaded.type == "application/pdf"
+                else extract_text_from_docx(uploaded)
+                if uploaded.type.endswith("document")
+                else extract_text_from_txt(uploaded)
+            )
 
-        irp_summary = client.models.generate_content(
-            model="models/gemini-2.5-flash",
-            contents=build_irp_extraction_prompt(raw)
-        ).text
+        with st.spinner("🧠 Extracting actionable IRP content..."):
+            irp_summary = client.models.generate_content(
+                model="models/gemini-2.5-flash",
+                contents=build_irp_extraction_prompt(raw)
+            ).text
 
-        with st.expander("📄 Extracted IRP Summary"):
+        with st.expander("📄 Extracted IRP Summary", expanded=False):
             st.markdown(irp_summary)
 
         input_text = irp_summary
@@ -208,48 +208,52 @@ else:
         placeholder="Account Compromise – Brute Force Success"
     )
 
-# -------------------------------------------------
-# GENERATE
-# -------------------------------------------------
+# ---------- GENERATE PLAYBOOK ----------
 if st.button("Generate Playbook"):
 
-    response = client.models.generate_content(
-        model="models/gemini-2.5-flash",
-        contents=build_playbook_prompt(input_text, "Use Case" if mode == "Use Case" else "IRP")
-    )
+    if not input_text.strip():
+        st.warning("Please provide input.")
+        st.stop()
 
-    data = parse_model_output(response.text)
-    blocks = data["blocks"]
-    documentation = data["documentation"]
-
-    st.success("Playbook generated")
-
-    st.header("🧩 Playbook Steps")
-    for i, b in enumerate(blocks, start=1):
-        with st.expander(f"Step {i}: {b['block_name']}"):
-            st.markdown(b["purpose"])
-
-    st.header("📌 Workflow Summary")
-    for step in generate_workflow_steps(blocks):
-        st.markdown(step)
-
-    st.header("🔗 SOAR Playbook Workflow")
-    render_mermaid(generate_mermaid_diagram(blocks))
-
-    # ---------------- DOCUMENTATION (FIXED) ----------------
-    st.header("📄 Playbook Documentation (Detailed)")
-
-    with st.expander("View Documentation", expanded=True):
-        st.markdown(
-            f"<div style='font-size:16px;line-height:1.6'>{documentation}</div>",
-            unsafe_allow_html=True
+    with st.spinner("⚙️ Generating SOAR playbook logic..."):
+        response = client.models.generate_content(
+            model="models/gemini-2.5-flash",
+            contents=build_playbook_prompt(
+                input_text,
+                "Use Case" if mode == "Use Case" else "IRP"
+            )
         )
 
-    pdf_bytes = generate_doc_pdf(documentation)
+    with st.spinner("🧩 Rendering playbook outputs..."):
+        data = parse_model_output(response.text)
+        blocks = data["blocks"]
+        documentation = data["documentation"]
 
-    st.download_button(
-        "⬇️ Download Playbook Documentation (PDF)",
-        data=pdf_bytes,
-        file_name="soar_playbook_documentation.pdf",
-        mime="application/pdf"
-    )
+        st.success("Playbook generated")
+
+        st.header("🧩 Playbook Steps")
+        for i, b in enumerate(blocks, start=1):
+            with st.expander(f"Step {i}: {b['block_name']}"):
+                st.markdown(b["purpose"])
+
+        st.header("📌 Workflow Summary")
+        for step in generate_workflow_steps(blocks):
+            st.markdown(step)
+
+        st.header("🔗 SOAR Playbook Workflow")
+        render_mermaid(generate_mermaid_diagram(blocks))
+
+        st.header("📄 Playbook Documentation (Detailed)")
+        with st.expander("View Documentation", expanded=True):
+            st.markdown(
+                f"<div style='font-size:16px;line-height:1.6'>{documentation}</div>",
+                unsafe_allow_html=True
+            )
+
+        pdf_bytes = generate_doc_pdf(documentation)
+        st.download_button(
+            "⬇️ Download Playbook Documentation (PDF)",
+            data=pdf_bytes,
+            file_name="soar_playbook_documentation.pdf",
+            mime="application/pdf"
+        )
