@@ -17,7 +17,7 @@ st.set_page_config(page_title="SOAR Playbook Generator", layout="wide")
 st.caption("Built by Srinivas")
 
 # -------------------------------------------------
-# SESSION STATE INIT (STRICT TYPES)
+# SESSION STATE INIT
 # -------------------------------------------------
 if "blocks" not in st.session_state:
     st.session_state.blocks = None
@@ -28,7 +28,7 @@ if "diagram_code" not in st.session_state:
 if "irp_summary" not in st.session_state:
     st.session_state.irp_summary = None
 if "generated" not in st.session_state:
-    st.session_state.generated = False  # IMPORTANT: boolean
+    st.session_state.generated = False
 
 # -------------------------------------------------
 # API CONFIG
@@ -112,24 +112,23 @@ def extract_text_from_txt(file):
     return StringIO(file.getvalue().decode("utf-8")).read()
 
 # -------------------------------------------------
-# DOCUMENTATION BUILDER (2–3 PAGE STYLE)
+# DOCUMENTATION BUILDER (MULTI-PAGE)
 # -------------------------------------------------
 def build_full_documentation(blocks):
     sections = []
 
     sections.append(
         "1. Playbook Overview\n"
-        "This SOAR playbook defines an end-to-end automated and semi-automated incident response workflow. "
-        "It standardizes investigation, decision-making, containment, and escalation activities."
+        "This SOAR playbook defines an end-to-end incident response workflow including detection, "
+        "analysis, containment, escalation, and recovery."
     )
 
     sections.append(
-        "2. Scope and Trigger Conditions\n"
-        "This playbook is triggered by alerts from SIEM, EDR, IAM, or security monitoring platforms that "
-        "indicate suspicious or malicious activity requiring investigation."
+        "2. Scope and Triggers\n"
+        "Triggered by alerts from SIEM, EDR, IAM, or security monitoring platforms."
     )
 
-    sections.append("3. Workflow Description")
+    sections.append("3. Workflow Steps")
     for i, b in enumerate(blocks, start=1):
         sections.append(
             f"Step {i}: {b['block_name']}\n"
@@ -138,28 +137,25 @@ def build_full_documentation(blocks):
             f"Outputs: {', '.join(b['outputs'])}"
         )
 
+    sections.append("4. Decision & Containment Logic")
     sections.append(
-        "4. Decision Logic\n"
-        "Threat confidence is evaluated using enrichment data, contextual risk indicators, and detection "
-        "signals to determine automated containment versus manual analyst review."
+        "High confidence incidents are auto-contained, while low/medium confidence "
+        "incidents are routed for analyst review."
     )
 
-    sections.append("5. Containment, Escalation, and SLA Impact")
+    sections.append("5. SLA, Escalation & Analyst Guidance")
     for b in blocks:
         sections.append(
             f"{b['block_name']}:\n"
             f"SLA Impact: {b['sla_impact']}\n"
-            f"Failure Handling: {b['failure_handling']}"
+            f"Failure Handling: {b['failure_handling']}\n"
+            f"Analyst Notes: {b['analyst_notes']}"
         )
-
-    sections.append("6. Analyst Notes and Execution Guidance")
-    for b in blocks:
-        sections.append(f"{b['block_name']}: {b['analyst_notes']}")
 
     return "\n\n".join(sections)
 
 # -------------------------------------------------
-# MERMAID DIAGRAM (COLORED)
+# MERMAID DIAGRAM
 # -------------------------------------------------
 def generate_mermaid_diagram(blocks):
     lines = ["flowchart LR"]
@@ -198,17 +194,41 @@ def generate_mermaid_diagram(blocks):
     return "\n".join(lines)
 
 def render_mermaid(code):
-    components.html(
-        f"""
-        <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-        <script>
-          mermaid.initialize({{ startOnLoad:true, theme:"base" }});
-        </script>
-        <div class="mermaid">{code}</div>
-        """,
-        height=550,
-        scrolling=True
-    )
+    html = f"""
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({{ startOnLoad:true, theme:"base" }});
+
+      function downloadSVG() {{
+        const svg = document.querySelector(".mermaid svg");
+        if (!svg) return;
+        const serializer = new XMLSerializer();
+        const source = serializer.serializeToString(svg);
+        const blob = new Blob([source], {{ type: "image/svg+xml;charset=utf-8" }});
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "soar_workflow.svg";
+        a.click();
+        URL.revokeObjectURL(url);
+      }}
+    </script>
+
+    <button onclick="downloadSVG()" style="
+        margin-bottom:10px;
+        padding:8px 14px;
+        font-weight:600;
+        border-radius:6px;
+        border:1px solid #ccc;
+        cursor:pointer;
+    ">
+        ⬇️ Download Workflow Diagram (SVG)
+    </button>
+
+    <div class="mermaid">{code}</div>
+    """
+    components.html(html, height=600, scrolling=True)
 
 # -------------------------------------------------
 # PDF GENERATOR
@@ -240,10 +260,8 @@ mode = st.radio(
 
 input_text = ""
 
-# ---------- IRP DOCUMENT UPLOAD ----------
 if mode == "IRP (Document Upload)":
     uploaded = st.file_uploader("Upload IRP (PDF / DOCX / TXT)", type=["pdf", "docx", "txt"])
-
     if uploaded:
         with st.spinner("📥 Reading document..."):
             raw = (
@@ -264,15 +282,10 @@ if mode == "IRP (Document Upload)":
             st.markdown(st.session_state.irp_summary)
 
         input_text = st.session_state.irp_summary
-
 else:
-    input_text = st.text_area(
-        "Input",
-        height=260,
-        placeholder="Account Compromise – Brute Force Success"
-    )
+    input_text = st.text_area("Input", height=260)
 
-# ---------- GENERATE BUTTON ----------
+# ---------- GENERATE ----------
 if st.button("Generate Playbook", disabled=bool(st.session_state.generated)):
     with st.spinner("⚙️ Generating SOAR playbook logic..."):
         response = client.models.generate_content(
@@ -301,10 +314,9 @@ if st.session_state.generated:
     with st.expander("View Full Documentation", expanded=True):
         st.markdown(st.session_state.documentation)
 
-    pdf_bytes = generate_doc_pdf(st.session_state.documentation)
     st.download_button(
-        "⬇️ Download Full Playbook Documentation (PDF)",
-        pdf_bytes,
+        "⬇️ Download Playbook Documentation (PDF)",
+        generate_doc_pdf(st.session_state.documentation),
         "soar_playbook_documentation.pdf",
         mime="application/pdf"
     )
