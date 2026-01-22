@@ -67,36 +67,47 @@ def generate_workflow_steps(blocks):
     return steps
 
 # -------------------------------------------------
-# UI ELEMENTS
+# MERMAID PLAYBOOK GENERATOR (NEW)
 # -------------------------------------------------
-def box(title, subtitle, color):
-    st.markdown(
-        f"""
-        <div style="
-            display:inline-block;
-            padding:12px 18px;
-            border-radius:14px;
-            background:{color};
-            color:white;
-            font-weight:600;
-            text-align:center;
-            white-space:nowrap;
-            box-shadow:0 6px 14px rgba(0,0,0,0.18);
-        ">
-            {title}<br/>
-            <span style="font-size:12px;font-weight:400;">
-                {subtitle}
-            </span>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+def generate_mermaid_diagram(blocks):
+    lines = []
+    lines.append("flowchart LR")
 
-def arrow():
-    st.markdown(
-        "<span style='font-size:26px;margin:0 10px;'>→</span>",
-        unsafe_allow_html=True
-    )
+    # Core blocks
+    for i, block in enumerate(blocks):
+        node_id = f"B{i}"
+        label = block["block_name"].replace("_", " ")
+        lines.append(f'{node_id}["{label}"]')
+
+        if i > 0:
+            lines.append(f"B{i-1} --> {node_id}")
+
+    # Decision block
+    decision_id = "D1"
+    lines.append(f'{decision_id}{{"Threat Confidence?"}}')
+    lines.append(f"B{len(blocks)-1} --> {decision_id}")
+
+    # High confidence path
+    lines.append('HC["Auto Containment"]')
+    lines.append('HC2["Disable / Block Entity"]')
+    lines.append('HC3["Preserve Evidence"]')
+    lines.append('HC4["Notify L2 / IR"]')
+
+    lines.append(f'{decision_id} -->|High| HC')
+    lines.append("HC --> HC2")
+    lines.append("HC2 --> HC3")
+    lines.append("HC3 --> HC4")
+
+    # Low / Medium confidence path
+    lines.append('LC["Manual Review"]')
+    lines.append('LC2["L1 Analysis"]')
+    lines.append('LC3["Close or Escalate"]')
+
+    lines.append(f'{decision_id} -->|Low / Medium| LC')
+    lines.append("LC --> LC2")
+    lines.append("LC2 --> LC3")
+
+    return "\n".join(lines)
 
 # -------------------------------------------------
 # MAIN UI
@@ -144,53 +155,27 @@ if st.button("Generate Playbook"):
             st.markdown(f"**Analyst Notes:** {block['analyst_notes']}")
 
     # -------------------------------------------------
-    # WORKFLOW SUMMARY (NEW – TECHNICAL STEPS)
+    # WORKFLOW SUMMARY (TECHNICAL STEPS)
     # -------------------------------------------------
     st.header("📌 Workflow Summary (Technical Steps)")
-
     workflow_steps = generate_workflow_steps(blocks)
-
     for step in workflow_steps:
         st.markdown(step)
 
     # -------------------------------------------------
-    # GRAPHICAL FLOW (STATIC REPRESENTATION)
+    # SOAR PLAYBOOK WORKFLOW (DYNAMIC MERMAID)
     # -------------------------------------------------
-    st.header("🔗 SOAR Flow (Graphical)")
+    st.header("🔗 SOAR Playbook Workflow")
 
-    st.markdown("<div style='display:flex;align-items:center;flex-wrap:wrap;'>", unsafe_allow_html=True)
-    box("Trigger", "SIEM Detection", "#0f766e")
-    arrow()
-    box("Enrichment", "Identity + IP", "#15803d")
-    arrow()
-    box("Threat Intel", "Reputation Check", "#374151")
-    arrow()
-    box("Decision", "Confidence Evaluation", "#d97706")
-    st.markdown("</div>", unsafe_allow_html=True)
+    mermaid_code = generate_mermaid_diagram(blocks)
 
-    st.markdown("<br/>", unsafe_allow_html=True)
-
-    st.markdown("<div style='display:flex;gap:80px;flex-wrap:wrap;'>", unsafe_allow_html=True)
-
-    st.markdown("<div>", unsafe_allow_html=True)
-    box("HIGH", "Auto Containment", "#b91c1c")
-    arrow()
-    box("Disable / Block", "Account & IP", "#7f1d1d")
-    arrow()
-    box("Preserve Evidence", "Logs + EDR", "#1f2937")
-    arrow()
-    box("Notify L2", "Incident", "#065f46")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<div>", unsafe_allow_html=True)
-    box("LOW / MED", "Manual Review", "#2563eb")
-    arrow()
-    box("L1 Analysis", "Validate", "#1e40af")
-    arrow()
-    box("Close / Escalate", "Decision", "#0f172a")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        ```mermaid
+        {mermaid_code}
+        ```
+        """
+    )
 
     # -------------------------------------------------
     # DOCUMENTATION
