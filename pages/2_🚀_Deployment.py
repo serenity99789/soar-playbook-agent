@@ -70,7 +70,7 @@ input_mode = st.radio(
 
 
 # -------------------------------------------------
-# Conditional Input Panels (QoL Clean)
+# Conditional Input Panels
 # -------------------------------------------------
 combined_input: Optional[str] = None
 
@@ -140,19 +140,16 @@ if st.button("Generate Deployment Playbook", type="primary"):
 
 
 # -------------------------------------------------
-# Render Output
+# Render Output + SVG Download
 # -------------------------------------------------
 if st.session_state.deployment_result:
 
     result = st.session_state.deployment_result
 
-    # ---------------- Executive Summary ----------------
     st.subheader("Executive Summary")
     st.write(result.get("summary", "No summary generated."))
 
     st.markdown("---")
-
-    # ---------------- SOAR Execution Flow ----------------
     st.subheader("SOAR Execution Flow")
 
     mermaid_diagram = build_soar_mermaid(
@@ -164,22 +161,37 @@ if st.session_state.deployment_result:
       <head>
         <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
         <script>
-          mermaid.initialize({{ startOnLoad: true, theme: 'default' }});
+          mermaid.initialize({{ startOnLoad: false, theme: 'default' }});
+
+          async function renderAndDownload() {{
+            const {{ svg }} = await mermaid.render('soarDiagram', `{mermaid_diagram}`);
+            const blob = new Blob([svg], {{ type: 'image/svg+xml' }});
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'soar_playbook.svg';
+            a.click();
+
+            URL.revokeObjectURL(url);
+          }}
+
+          document.addEventListener("DOMContentLoaded", async () => {{
+            const {{ svg }} = await mermaid.render('soarDiagram', `{mermaid_diagram}`);
+            document.getElementById("diagram").innerHTML = svg;
+          }});
         </script>
       </head>
       <body>
-        <div class="mermaid">
-        {mermaid_diagram}
-        </div>
+        <div id="diagram"></div>
+        <br/>
+        <button onclick="renderAndDownload()">⬇ Download SVG</button>
       </body>
     </html>
     """
 
-    components.html(mermaid_html, height=650, scrolling=True)
+    components.html(mermaid_html, height=700, scrolling=True)
 
     st.markdown("---")
-
-    # ---------------- Confidence ----------------
     st.subheader("Model Confidence")
-    confidence = result.get("confidence", "N/A")
-    st.info(f"Confidence Score: **{confidence}**")
+    st.info(f"Confidence Score: **{result.get('confidence', 'N/A')}**")
