@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 
 from core.playbook_engine import generate_playbook
 from core.diagram_engine import build_soar_mermaid
@@ -81,7 +82,23 @@ if st.session_state.deployment_result:
         blocks=result.get("blocks", [])
     )
 
-    st.mermaid(mermaid_diagram)
+    mermaid_html = f"""
+    <html>
+      <head>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+        <script>
+          mermaid.initialize({{ startOnLoad: true, theme: 'default' }});
+        </script>
+      </head>
+      <body>
+        <div class="mermaid">
+        {mermaid_diagram}
+        </div>
+      </body>
+    </html>
+    """
+
+    components.html(mermaid_html, height=600, scrolling=True)
 
     st.markdown("---")
 
