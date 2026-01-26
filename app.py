@@ -260,10 +260,11 @@ if st.session_state.generated:
     if output_mode == "Learning Mode":
         st.header("📘 Block-Level Learning")
         for i, b in enumerate(st.session_state.blocks, 1):
-            with st.expander(f"Step {i}: {b['block_name']}", expanded=False):
-                st.markdown(f"**Why this step exists:** {b['learning_explanation']}")
-                st.markdown(f"**SOC Role Involved:** {b['soc_role']}")
-                st.markdown(f"**If skipped:** {b['skip_impact']}")
+            with st.expander(f"Step {i}: {b['block_name']}"):
+                st.markdown(f"**Why this step exists:** {b.get('learning_explanation', 'This step provides necessary context and decision support in the SOAR workflow.')}")
+                st.markdown(f"**SOC Role Involved:** {b.get('soc_role', 'Typically handled by L1/L2 analysts depending on automation maturity.')}")
+                st.markdown(f"**If skipped:** {b.get('skip_impact', 'Skipping this step may reduce confidence, increase false positives, or delay response.')}")
+
 
     st.header("SOAR Workflow")
     render_mermaid(st.session_state.diagram_code)
