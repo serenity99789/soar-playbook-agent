@@ -1,14 +1,12 @@
 import os
-import json
 from typing import Dict, Any
 
 from google import genai
-from google.genai import types
 
 
-# -----------------------------
-# Gemini Client (ONLY LLM)
-# -----------------------------
+# -------------------------
+# Gemini Client
+# -------------------------
 def get_gemini_client():
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
@@ -17,74 +15,75 @@ def get_gemini_client():
     return genai.Client(api_key=api_key)
 
 
-# -----------------------------
-# Core Playbook Generator
-# -----------------------------
+# -------------------------
+# Main Playbook Generator
+# -------------------------
 def generate_playbook(
     alert_text: str,
     mode: str = "deployment",
     depth: str = "Advanced",
 ) -> Dict[str, Any]:
+    """
+    Generates a SOAR playbook using Gemini.
+    This is REAL generation — no cache, no placeholders.
+    """
 
     client = get_gemini_client()
 
     system_prompt = f"""
 You are an enterprise-grade SOAR architect.
 
-Your task:
-- Analyze the SIEM alert deeply
-- Design a REAL production SOAR playbook
-- Use SOC terminology, not generic language
-- Include branching logic, containment conditions, enrichment steps
-- Assume tools like SIEM, EDR, IAM, Firewall, TI platforms exist
+Analyze the given SIEM alert deeply and produce a REAL, technical SOAR playbook.
+
+Rules:
+- NO generic steps
 - NO placeholders
-- NO generic advice
-- NO repetition
+- Think like a SOC + IR lead
+- Use conditional logic, decision points, and real security controls
+- Assume tools like SIEM, EDR, IAM, Firewall, SOAR platform exist
+- Output must be structured and actionable
 
 Mode: {mode}
 Depth: {depth}
-
-Return STRICT JSON ONLY in this schema:
-
-{{
-  "summary": "one-paragraph executive summary",
-  "blocks": [
-    {{
-      "id": "string",
-      "title": "string",
-      "type": "process | decision | action",
-      "description": "string",
-      "on_true": "id or null",
-      "on_false": "id or null"
-    }}
-  ]
-}}
 """
 
     user_prompt = f"""
 SIEM Alert / Use Case:
 {alert_text}
+
+Generate:
+1. Detailed SOAR execution stages
+2. Decision logic (conditions, branches)
+3. Automation vs Human checkpoints
+4. Incident lifecycle actions
 """
 
     try:
         response = client.models.generate_content(
             model="models/gemini-2.5-flash",
             contents=[
-                types.Content(role="system", parts=[types.Part(text=system_prompt)]),
-                types.Content(role="user", parts=[types.Part(text=user_prompt)]),
+                {"role": "system", "parts": [{"text": system_prompt}]},
+                {"role": "user", "parts": [{"text": user_prompt}]},
             ],
-            generation_config=types.GenerationConfig(
-                temperature=0.2,
-                max_output_tokens=4096,
-            ),
+            config={
+                "temperature": 0.3,
+                "top_p": 0.9,
+                "max_output_tokens": 2048,
+            },
         )
-
     except Exception as e:
         raise RuntimeError(f"Gemini request failed: {e}")
 
-    raw_text = response.text.strip()
-
+    # -------------------------
+    # Parse response safely
+    # -------------------------
     try:
-        return json.loads(raw_text)
-    except json.JSONDecodeError:
-        raise RuntimeError(f"Invalid JSON from Gemini:\n{raw_text}")
+        text_output = response.text
+    except Exception:
+        raise RuntimeError("Gemini returned no text output")
+
+    return {
+        "raw_text": text_output,
+        "mode": mode,
+        "depth": depth,
+    }
