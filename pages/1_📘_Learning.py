@@ -60,12 +60,12 @@ col_title, col_home = st.columns([6, 1])
 with col_title:
     st.title("SOAR Learning Platform")
 with col_home:
-    st.page_link("Home.py", label="🏠 Home")
+    st.page_link("app.py", label="🏠 Home")  # ✅ FIXED
 
 st.divider()
 
 # -------------------------------------------------
-# Level selection (ONLY shown if not started)
+# Level selection
 # -------------------------------------------------
 if st.session_state.selected_level is None:
     st.subheader("Select your current level")
@@ -90,15 +90,12 @@ content = LEARNING_CONTENT[level]
 
 left, right = st.columns([2, 1])
 
-# -------------------------------------------------
-# LEFT COLUMN — Learning Path & Content
-# -------------------------------------------------
 with left:
     st.subheader(f"{level} Level — Learning Path")
     st.markdown("### Progress Tracker")
 
     total = len(content["sections"])
-    completed = total  # static for now
+    completed = total
 
     for title, _ in content["sections"]:
         st.checkbox(title, value=True, disabled=True)
@@ -111,13 +108,9 @@ with left:
     st.subheader(content["title"])
 
     for idx, (title, body) in enumerate(content["sections"], start=1):
-        with st.expander(f"{idx}. {title}", expanded=False):
+        with st.expander(f"{idx}. {title}"):
             st.write(body)
 
-# -------------------------------------------------
-# RIGHT COLUMN — Workflow Diagram
-# -------------------------------------------------
 with right:
     st.subheader("Workflow Diagram")
     st.info("Workflow diagram will appear here.")
-
