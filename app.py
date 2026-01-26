@@ -17,6 +17,16 @@ st.set_page_config(page_title="SOAR Playbook Generator", layout="wide")
 st.caption("Built by Accenture")
 
 # -------------------------------------------------
+# MODE SELECTOR (NEW)
+# -------------------------------------------------
+output_mode = st.radio(
+    "Output Mode",
+    ["Learning Mode", "Deployment Mode"],
+    horizontal=True,
+    help="Learning Mode explains SOC concepts. Deployment Mode shows a clean operational playbook."
+)
+
+# -------------------------------------------------
 # SESSION STATE
 # -------------------------------------------------
 state_defaults = {
@@ -43,9 +53,9 @@ client = genai.Client(api_key=API_KEY)
 # -------------------------------------------------
 # PROMPTS
 # -------------------------------------------------
-def build_playbook_prompt(text, mode):
+def build_playbook_prompt(text):
     return f"""
-You are a SOAR engineer.
+You are a SOAR engineer designing SOC playbooks.
 
 Return ONLY valid JSON.
 No markdown. No explanation text.
@@ -81,14 +91,12 @@ Text:
 """
 
 # -------------------------------------------------
-# SAFE JSON EXTRACTION (KEY FIX)
+# SAFE JSON EXTRACTION
 # -------------------------------------------------
 def extract_json_safely(text):
     try:
-        # Try direct parse
         return json.loads(text)
     except:
-        # Fallback: extract first JSON object
         match = re.search(r"\{[\s\S]*\}", text)
         if match:
             return json.loads(match.group())
@@ -126,14 +134,16 @@ def build_documentation(blocks):
     return "\n\n".join(parts)
 
 # -------------------------------------------------
-# MERMAID (FULL COLOR)
+# MERMAID DIAGRAM
 # -------------------------------------------------
 def generate_mermaid(blocks):
-    lines = ["flowchart LR"]
+    lines = ["flowchart LR", 'T["Alert / Detection Trigger"]:::trigger']
 
     for i, b in enumerate(blocks):
         lines.append(f'B{i}["{b["block_name"]}"]:::core')
-        if i > 0:
+        if i == 0:
+            lines.append("T --> B0")
+        else:
             lines.append(f'B{i-1} --> B{i}')
 
     lines.append('D{"Threat Confidence?"}:::decision')
@@ -141,7 +151,7 @@ def generate_mermaid(blocks):
 
     lines += [
         'HC1["Auto Containment"]:::contain',
-        'HC2["Disable / Block"]:::contain',
+        'HC2["Disable / Block Entity"]:::contain',
         'HC3["Preserve Evidence"]:::evidence',
         'HC4["Notify L2 / IR"]:::notify',
         'D -->|High| HC1',
@@ -154,6 +164,7 @@ def generate_mermaid(blocks):
     ]
 
     lines += [
+        "classDef trigger fill:#0ea5e9,color:#fff,stroke:#0369a1,stroke-width:2px",
         "classDef core fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px",
         "classDef decision fill:#f59e0b,stroke:#b45309,stroke-width:3px",
         "classDef contain fill:#dc2626,color:#fff",
@@ -182,7 +193,7 @@ def render_mermaid(code):
     <button onclick="downloadSVG()">⬇️ Download Workflow (SVG)</button>
     <div class="mermaid">{code}</div>
     """
-    components.html(html, height=650, scrolling=True)
+    components.html(html, height=700, scrolling=True)
 
 # -------------------------------------------------
 # PDF
@@ -204,6 +215,13 @@ def generate_pdf(text):
 # -------------------------------------------------
 st.title("🛡️ SOAR Playbook Generator")
 
+if output_mode == "Learning Mode":
+    st.info(
+        "🎓 **Learning Mode**\n\n"
+        "This view explains *why* each SOAR step exists, how SOC teams think, "
+        "and how SIEM detections translate into automated response."
+    )
+
 mode = st.radio("Input Type", ["Use Case", "IRP (Document Upload)"], horizontal=True)
 input_text = ""
 
@@ -223,7 +241,7 @@ if mode == "IRP (Document Upload)":
                 model="models/gemini-2.5-flash",
                 contents=build_irp_extraction_prompt(raw)
             ).text
-        with st.expander("Extracted IRP Summary", expanded=True):
+        with st.expander("Extracted IRP Summary (Used as Input)", expanded=True):
             st.markdown(st.session_state.irp_summary)
         input_text = st.session_state.irp_summary
 else:
@@ -236,7 +254,7 @@ if st.button("Generate Playbook"):
     with st.spinner("Generating playbook..."):
         response = client.models.generate_content(
             model="models/gemini-2.5-flash",
-            contents=build_playbook_prompt(input_text, mode)
+            contents=build_playbook_prompt(input_text)
         )
 
     try:
@@ -245,14 +263,23 @@ if st.button("Generate Playbook"):
         st.session_state.diagram_code = generate_mermaid(data["blocks"])
         st.session_state.documentation = build_documentation(data["blocks"])
         st.session_state.generated = True
-    except Exception as e:
-        st.error("Model output could not be parsed. Click Generate again.")
+    except:
+        st.error("Model output could not be parsed. Try again.")
 
 # -------------------------------------------------
 # OUTPUT
 # -------------------------------------------------
 if st.session_state.generated:
     st.success("Playbook generated")
+
+    if output_mode == "Learning Mode":
+        st.subheader("📘 What You Are Learning")
+        st.markdown(
+            "- How SIEM alerts trigger SOAR workflows\n"
+            "- Why confidence-based decisions exist\n"
+            "- What can be automated vs manual\n"
+            "- How SOC escalation works\n"
+        )
 
     st.header("SOAR Workflow")
     render_mermaid(st.session_state.diagram_code)
