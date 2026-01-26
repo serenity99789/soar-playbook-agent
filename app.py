@@ -19,19 +19,17 @@ st.caption("Built by Accenture")
 # -------------------------------------------------
 # SESSION STATE
 # -------------------------------------------------
-state_defaults = {
+defaults = {
     "blocks": None,
-    "documentation": None,
-    "diagram_code": None,
-    "irp_summary": None,
+    "diagram": None,
+    "doc": None,
     "generated": False,
 }
-for k, v in state_defaults.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+for k, v in defaults.items():
+    st.session_state.setdefault(k, v)
 
 # -------------------------------------------------
-# API CONFIG
+# API
 # -------------------------------------------------
 API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
@@ -43,17 +41,9 @@ client = genai.Client(api_key=API_KEY)
 # -------------------------------------------------
 # PROMPTS
 # -------------------------------------------------
-def build_playbook_prompt(text):
+def playbook_prompt(text):
     return f"""
-You are a senior SOAR engineer designing production-grade SOC playbooks.
-
-CRITICAL RULES:
-- Always generate a FULL SOAR lifecycle (minimum 5 blocks).
-- Include enrichment, investigation, decision, response, and closure steps.
-- Even if the input is simple, expand it into a realistic SOC workflow.
-
 Return ONLY valid JSON.
-No markdown. No explanation text.
 
 Schema:
 {{
@@ -65,172 +55,99 @@ Schema:
       "outputs": [],
       "failure_handling": "",
       "sla_impact": "",
-      "analyst_notes": "",
-      "learning_explanation": "",
-      "soc_role": "",
-      "skip_impact": "",
-      "siem_detection": "",
-      "log_sources": [],
-      "mitre_technique": "",
-      "automation_level": ""
+      "analyst_notes": ""
     }}
   ]
 }}
 
-Use Case:
+Input:
 {text}
 """
 
-def build_irp_extraction_prompt(raw):
-    return f"""
-Extract only actionable incident response steps.
-Ignore policy, legal, and background text.
-
-Return plain text.
-
-Text:
-{raw}
-"""
-
 # -------------------------------------------------
-# SAFE JSON EXTRACTION
+# JSON SAFETY
 # -------------------------------------------------
-def extract_json_safely(text):
+def extract_json(text):
     try:
         return json.loads(text)
     except:
-        match = re.search(r"\{[\s\S]*\}", text)
+        match = re.search(r"\{{[\s\S]*\}}", text)
         if match:
             return json.loads(match.group())
-        raise ValueError("No valid JSON found")
+        raise ValueError("Invalid JSON")
 
 # -------------------------------------------------
 # FILE HELPERS
 # -------------------------------------------------
-def extract_text_from_pdf(file):
-    reader = PdfReader(file)
-    return "\n".join(p.extract_text() or "" for p in reader.pages)
-
-def extract_text_from_docx(file):
-    doc = Document(file)
-    return "\n".join(p.text for p in doc.paragraphs)
-
-def extract_text_from_txt(file):
-    return StringIO(file.getvalue().decode()).read()
-
-# -------------------------------------------------
-# DOCUMENTATION
-# -------------------------------------------------
-def build_documentation(blocks):
-    parts = ["SOAR PLAYBOOK DOCUMENTATION\n"]
-    for i, b in enumerate(blocks, 1):
-        parts.append(
-            f"Step {i}: {b['block_name']}\n"
-            f"Purpose: {b['purpose']}\n"
-            f"Inputs: {', '.join(b['inputs'])}\n"
-            f"Outputs: {', '.join(b['outputs'])}\n"
-            f"SLA Impact: {b['sla_impact']}\n"
-            f"Failure Handling: {b['failure_handling']}\n"
-            f"Analyst Notes: {b['analyst_notes']}\n"
-        )
-    return "\n\n".join(parts)
+def read_pdf(f): return "\n".join(p.extract_text() or "" for p in PdfReader(f).pages)
+def read_docx(f): return "\n".join(p.text for p in Document(f).paragraphs)
+def read_txt(f): return StringIO(f.getvalue().decode()).read()
 
 # -------------------------------------------------
 # MERMAID
 # -------------------------------------------------
-def generate_mermaid(blocks):
+def mermaid(blocks):
     lines = ["flowchart LR"]
-
     for i, b in enumerate(blocks):
         lines.append(f'B{i}["{b["block_name"]}"]:::core')
         if i > 0:
-            lines.append(f'B{i-1} --> B{i}')
-
-    lines.append('D{"Threat Confidence?"}:::decision')
-    lines.append(f'B{len(blocks)-1} --> D')
+            lines.append(f"B{i-1} --> B{i}")
 
     lines += [
-        'HC1["Auto Containment"]:::contain',
-        'HC2["Disable / Block"]:::contain',
-        'HC3["Preserve Evidence"]:::evidence',
-        'HC4["Notify L2 / IR"]:::notify',
-        'D -->|High| HC1',
-        'HC1 --> HC2 --> HC3 --> HC4',
-        'LC1["Manual Review"]:::manual',
-        'LC2["L1 Analysis"]:::manual',
-        'LC3["Close / Escalate"]:::notify',
-        'D -->|Low / Medium| LC1',
-        'LC1 --> LC2 --> LC3',
+        'D{"Threat Confidence?"}:::decision',
+        f'B{len(blocks)-1} --> D',
+        'D -->|High| HC1["Auto Containment"]:::contain --> HC2["Disable / Block"] --> HC3["Preserve Evidence"] --> HC4["Notify L2 / IR"]',
+        'D -->|Low / Medium| LC1["Manual Review"]:::manual --> LC2["L1 Analysis"] --> LC3["Close / Escalate"]'
     ]
 
     lines += [
-        "classDef core fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px",
-        "classDef decision fill:#f59e0b,stroke:#b45309,stroke-width:3px",
+        "classDef core fill:#2563eb,color:#fff",
+        "classDef decision fill:#f59e0b",
         "classDef contain fill:#dc2626,color:#fff",
-        "classDef evidence fill:#7c3aed,color:#fff",
-        "classDef notify fill:#16a34a,color:#fff",
-        "classDef manual fill:#6b7280,color:#fff",
+        "classDef manual fill:#6b7280,color:#fff"
     ]
-
     return "\n".join(lines)
 
 def render_mermaid(code):
-    html = f"""
+    components.html(f"""
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-    <script>
-      mermaid.initialize({{ startOnLoad:true }});
-      function downloadSVG() {{
-        const svg = document.querySelector(".mermaid svg");
-        const s = new XMLSerializer().serializeToString(svg);
-        const b = new Blob([s], {{type:"image/svg+xml"}});
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(b);
-        a.download = "soar_workflow.svg";
-        a.click();
-      }}
-    </script>
-    <button onclick="downloadSVG()">⬇️ Download Workflow (SVG)</button>
+    <script>mermaid.initialize({{startOnLoad:true}});</script>
     <div class="mermaid">{code}</div>
-    """
-    components.html(html, height=650, scrolling=True)
+    """, height=500)
 
 # -------------------------------------------------
 # UI
 # -------------------------------------------------
 st.title("🛡️ SOAR Playbook Generator")
 
-output_mode = st.radio("Output Mode", ["Learning Mode", "Deployment Mode"], horizontal=True)
+learning_level = st.radio(
+    "Learning Depth",
+    ["Beginner", "Intermediate"],
+    horizontal=True
+)
+
 mode = st.radio("Input Type", ["Use Case", "IRP (Document Upload)"], horizontal=True)
 
 input_text = ""
-
 if mode == "IRP (Document Upload)":
-    file = st.file_uploader("Upload IRP", type=["pdf", "docx", "txt"])
-    if file:
-        raw = extract_text_from_pdf(file) if file.type == "application/pdf" else extract_text_from_docx(file)
-        st.session_state.irp_summary = client.models.generate_content(
-            model="models/gemini-2.5-flash",
-            contents=build_irp_extraction_prompt(raw)
-        ).text
-        with st.expander("Extracted IRP Summary", expanded=True):
-            st.markdown(st.session_state.irp_summary)
-        input_text = st.session_state.irp_summary
+    f = st.file_uploader("Upload IRP", ["pdf", "docx", "txt"])
+    if f:
+        input_text = read_pdf(f) if f.type == "application/pdf" else read_docx(f) if "doc" in f.type else read_txt(f)
 else:
-    input_text = st.text_area("Use Case", height=240)
+    input_text = st.text_area("Use Case", height=220)
 
 # -------------------------------------------------
 # GENERATE
 # -------------------------------------------------
 if st.button("Generate Playbook"):
-    with st.spinner("Generating SOAR playbook..."):
-        response = client.models.generate_content(
+    with st.spinner("Generating playbook..."):
+        r = client.models.generate_content(
             model="models/gemini-2.5-flash",
-            contents=build_playbook_prompt(input_text)
+            contents=playbook_prompt(input_text)
         )
-        data = extract_json_safely(response.text)
+        data = extract_json(r.text)
         st.session_state.blocks = data["blocks"]
-        st.session_state.diagram_code = generate_mermaid(data["blocks"])
-        st.session_state.documentation = build_documentation(data["blocks"])
+        st.session_state.diagram = mermaid(data["blocks"])
         st.session_state.generated = True
 
 # -------------------------------------------------
@@ -239,30 +156,32 @@ if st.button("Generate Playbook"):
 if st.session_state.generated:
     st.success("Playbook generated")
 
-    if output_mode == "Learning Mode":
-        st.header("📘 Block-Level Learning")
-        for i, b in enumerate(st.session_state.blocks, 1):
-            with st.expander(f"Step {i}: {b['block_name']}"):
-                st.markdown(f"**Why this step exists:** {b.get('learning_explanation','')}")
-                st.markdown(f"**SOC Role:** {b.get('soc_role','')}")
-                st.markdown(f"**If skipped:** {b.get('skip_impact','')}")
-                st.markdown("---")
-                st.markdown("🔎 **SIEM → SOAR Mapping**")
-                st.markdown(f"- **Detection Type:** {b.get('siem_detection','')}")
-                st.markdown(f"- **Log Sources:** {', '.join(b.get('log_sources', []))}")
-                st.markdown(f"- **MITRE Technique:** {b.get('mitre_technique','')}")
-                st.markdown(f"- **Automation Level:** {b.get('automation_level','')}")
+    st.header("📘 Block-Level Learning")
 
-    st.header("SOAR Workflow")
-    render_mermaid(st.session_state.diagram_code)
+    for i, b in enumerate(st.session_state.blocks, 1):
+        with st.expander(f"Step {i}: {b['block_name']}"):
+            if learning_level == "Beginner":
+                st.markdown(f"""
+**Why this step exists:**  
+{b['purpose']}
 
-    st.header("Playbook Documentation")
-    with st.expander("View Documentation", expanded=True):
-        st.markdown(st.session_state.documentation)
+**If skipped:**  
+May increase false positives or delay response.
+""")
+            else:
+                st.markdown(f"""
+**Operational Purpose:**  
+{b['purpose']}
 
-    st.download_button(
-        "⬇️ Download Documentation (PDF)",
-        generate_pdf(st.session_state.documentation),
-        "soar_playbook.pdf",
-        mime="application/pdf"
-    )
+**SLA Impact:**  
+{b['sla_impact']}
+
+**Failure Handling:**  
+{b['failure_handling']}
+
+**SOC Analyst Notes:**  
+{b['analyst_notes']}
+""")
+
+    st.header("🔁 SOAR Workflow")
+    render_mermaid(st.session_state.diagram)
