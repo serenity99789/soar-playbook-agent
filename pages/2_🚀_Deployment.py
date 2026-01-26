@@ -65,7 +65,7 @@ alert_text = st.text_area(
 # -------------------------------------------------
 # IRP Upload
 # -------------------------------------------------
-st.subheader("Incident Response Plan (Optional)")
+st.subheader("Incident Response Plan")
 
 irp_file = st.file_uploader(
     label="Upload IRP (PDF)",
