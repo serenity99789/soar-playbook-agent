@@ -1,4 +1,6 @@
 import streamlit as st
+import textwrap
+import uuid
 
 # ---------------- Page Config ----------------
 st.set_page_config(
@@ -8,22 +10,21 @@ st.set_page_config(
 )
 
 st.title("🚀 SOAR Deployment Playbook")
-st.caption("Production-grade SOAR execution flow (enterprise-style)")
+st.caption("Production-grade SOAR execution flow driven by the alert use-case")
 
-# ---------------- Input Section ----------------
-with st.container():
-    st.subheader("Describe the SIEM Alert / Use Case")
+# ---------------- Input ----------------
+st.subheader("SIEM Alert / Use Case Input")
 
-    alert_text = st.text_area(
-        "Example:",
-        placeholder="Suspicious PowerShell execution detected on endpoint with external IP communication...",
-        height=140
-    )
+alert_text = st.text_area(
+    "Describe the alert that triggered SOAR",
+    placeholder="Example: Suspicious PowerShell execution detected on endpoint with outbound C2 communication...",
+    height=140
+)
 
-    generate = st.button("Generate Deployment Playbook")
+generate = st.button("Generate Deployment Playbook")
 
 # ---------------- Mermaid Renderer ----------------
-def render_mermaid(mermaid_code: str):
+def render_mermaid(code: str, height: int = 900):
     st.components.v1.html(
         f"""
         <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
@@ -41,105 +42,116 @@ def render_mermaid(mermaid_code: str):
 
         <div style="overflow-x:auto; padding:20px;">
             <pre class="mermaid">
-{mermaid_code}
+{code}
             </pre>
         </div>
         """,
-        height=900,
-        scrolling=True,
+        height=height,
+        scrolling=True
     )
 
-# ---------------- Generate Playbook ----------------
+# ---------------- Generate ----------------
 if generate:
     if not alert_text.strip():
-        st.warning("Please enter a SIEM alert or use case.")
-    else:
-        st.success("Deployment playbook generated")
+        st.warning("Please enter a SIEM alert before generating the playbook.")
+        st.stop()
 
-        mermaid_diagram = """
+    # Force fresh render every time (prevents stuck state)
+    run_id = str(uuid.uuid4())[:8]
+
+    # Compact alert summary for node
+    alert_summary = textwrap.shorten(
+        alert_text.replace("\n", " "),
+        width=90,
+        placeholder="..."
+    )
+
+    st.success("Deployment playbook generated")
+
+    mermaid = f"""
 flowchart LR
 
 %% ---------------- STYLES ----------------
-classDef enrich fill:#1f77ff,color:#ffffff,stroke:#1f77ff,stroke-width:1px;
-classDef analysis fill:#ff7f0e,color:#ffffff,stroke:#ff7f0e,stroke-width:1px;
-classDef decision fill:#9467bd,color:#ffffff,stroke:#9467bd,stroke-width:1px;
-classDef response fill:#d62728,color:#ffffff,stroke:#d62728,stroke-width:1px;
-classDef notify fill:#2ca02c,color:#ffffff,stroke:#2ca02c,stroke-width:1px;
+classDef ingest fill:#1f77ff,color:#ffffff,stroke:#1f77ff;
+classDef enrich fill:#1f77ff,color:#ffffff,stroke:#1f77ff;
+classDef triage fill:#ff7f0e,color:#ffffff,stroke:#ff7f0e;
+classDef analysis fill:#9467bd,color:#ffffff,stroke:#9467bd;
+classDef decision fill:#f1c40f,color:#000000,stroke:#f1c40f;
+classDef response fill:#e74c3c,color:#ffffff,stroke:#e74c3c;
+classDef notify fill:#2ecc71,color:#ffffff,stroke:#2ecc71;
+
+%% ---------------- ALERT ----------------
+A0["SIEM Alert<br/><small>{alert_summary}</small>"]:::ingest
 
 %% ---------------- ENRICHMENT ----------------
 subgraph E["Alert Intake & Enrichment"]
-    A1["Ingest SIEM Alert"]:::enrich
-    A2["Normalize Fields"]:::enrich
-    A3["Context Enrichment"]:::enrich
-    A1 --> A2 --> A3
+    A1["Normalize Fields"]:::enrich
+    A2["Context Enrichment"]:::enrich
+    A0 --> A1 --> A2
 end
 
 %% ---------------- TRIAGE ----------------
 subgraph T["Automated Triage"]
-    T1["Initial Severity Scoring"]:::analysis
-    T2["Deduplication Check"]:::analysis
-    A3 --> T1 --> T2
+    T1["Initial Severity Scoring"]:::triage
+    T2["Deduplication Check"]:::triage
+    A2 --> T1 --> T2
 end
 
-%% ---------------- ANALYSIS (PARALLEL) ----------------
+%% ---------------- PARALLEL ANALYSIS ----------------
 subgraph AN["Parallel Analysis"]
-    H1["Hash Analysis"]:::analysis
-    F1["File Analysis"]:::analysis
-    IP1["IP Reputation Check"]:::analysis
-    U1["Host & User Analysis"]:::analysis
+    H["Hash / File Analysis"]:::analysis
+    IP["IP Reputation Check"]:::analysis
+    U["Host & User Analysis"]:::analysis
 end
 
-T2 --> H1
-T2 --> F1
-T2 --> IP1
-T2 --> U1
+T2 --> H
+T2 --> IP
+T2 --> U
 
 %% ---------------- DECISION ----------------
-D1{"Threat Confirmed?"}:::decision
+D{{"Threat Confirmed?"}}:::decision
 
-H1 --> D1
-F1 --> D1
-IP1 --> D1
-U1 --> D1
+H --> D
+IP --> D
+U --> D
 
 %% ---------------- RESPONSE ----------------
-subgraph R["Response Actions"]
+subgraph R["Automated Response"]
     R1["Auto Containment"]:::response
     R2["Block IP / Isolate Host"]:::response
     R3["Preserve Evidence"]:::response
     R1 --> R2 --> R3
 end
 
-D1 -->|Yes| R1
-
-%% ---------------- HUMAN REVIEW ----------------
+%% ---------------- HUMAN ----------------
 subgraph HR["Human Review"]
-    HR1["SOC Analyst Review"]:::decision
-    HR2["Manual Decision"]:::decision
-    HR1 --> HR2
+    HR1["SOC Analyst Review"]:::analysis
 end
 
-D1 -->|Uncertain| HR1
+D -->|Yes| R1
+D -->|Uncertain| HR1
 
-%% ---------------- NOTIFICATION ----------------
-subgraph N["Closure & Reporting"]
-    N1["Create / Update Incident"]:::notify
-    N2["Notify IR & SOC Leads"]:::notify
-    N3["Generate Final Report"]:::notify
-    N1 --> N2 --> N3
+%% ---------------- CLOSURE ----------------
+subgraph C["Closure & Reporting"]
+    C1["Create / Update Incident"]:::notify
+    C2["Notify IR & SOC"]:::notify
+    C3["Final Report"]:::notify
+    C1 --> C2 --> C3
 end
 
-R3 --> N1
-HR2 --> N1
+R3 --> C1
+HR1 --> C1
+
+%% ---------------- RUN ----------------
+%% Run ID: {run_id}
 """
 
-        st.markdown("### 🧭 SOAR Execution Flow")
-        render_mermaid(mermaid_diagram)
+    st.markdown("### 🧭 SOAR Execution Flow")
+    render_mermaid(mermaid)
 
-        # ---------------- Download Mermaid ----------------
-        st.download_button(
-            label="⬇️ Download Playbook (Mermaid)",
-            data=mermaid_diagram,
-            file_name="soar_deployment_playbook.mmd",
-            mime="text/plain"
-        )
+    st.download_button(
+        "⬇️ Download Playbook (Mermaid)",
+        data=mermaid,
+        file_name="soar_deployment_playbook.mmd",
+        mime="text/plain"
+    )
