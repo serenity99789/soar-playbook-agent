@@ -1,6 +1,6 @@
 import streamlit as st
-from core.playbook_engine import generate_playbook
 import streamlit.components.v1 as components
+from core.playbook_engine import generate_playbook
 
 # -------------------------------------------------
 # PAGE CONFIG
@@ -11,146 +11,107 @@ st.set_page_config(
     layout="wide"
 )
 
-st.markdown("Built by Accenture")
+st.caption("Built by Accenture")
 
 # -------------------------------------------------
-# HEADER
+# MERMAID (ENTERPRISE SOAR FLOW)
 # -------------------------------------------------
-st.title("🚀 SOAR Deployment View")
-st.caption("Production-ready response flow with governed automation")
+def build_execution_flow():
+    return """
+flowchart TD
 
-st.divider()
+A[Alert Validation & Enrichment]:::analysis
+B[Threat Intelligence Lookup]:::analysis
+C{Threat Confirmed?}:::decision
 
-# -------------------------------------------------
-# INPUT
-# -------------------------------------------------
-st.subheader("Describe the SIEM alert")
-alert_text = st.text_area(
-    "",
-    placeholder="Suspicious PowerShell execution detected on endpoint...",
-    height=140
-)
+D[Auto Containment]:::auto
+E[Isolate Host / Block IP]:::auto
+F[Preserve Evidence]:::evidence
+G[Notify IR Team]:::notify
 
-# -------------------------------------------------
-# GENERATE
-# -------------------------------------------------
-if st.button("Generate Deployment Playbook"):
-    if not alert_text.strip():
-        st.warning("Please describe the SIEM alert.")
-        st.stop()
+H[Human Review]:::human
+I[SOC Analyst Decision]:::human
 
-    with st.spinner("Generating deployment playbook..."):
-        result = generate_playbook(
-            alert_text=alert_text,
-            mode="deployment",
-            depth="Production"
-        )
+A --> B --> C
+C -->|Yes| D --> E --> F --> G
+C -->|Uncertain| H --> I
 
-    st.success("Deployment playbook generated")
+classDef analysis fill:#2563eb,color:#ffffff,stroke:#1e3a8a,stroke-width:2px
+classDef decision fill:#f59e0b,color:#000000,stroke:#b45309,stroke-width:3px
+classDef auto fill:#dc2626,color:#ffffff,stroke:#7f1d1d,stroke-width:2px
+classDef human fill:#7c3aed,color:#ffffff,stroke:#4c1d95,stroke-width:2px
+classDef notify fill:#16a34a,color:#ffffff,stroke:#14532d,stroke-width:2px
+classDef evidence fill:#0ea5e9,color:#ffffff,stroke:#075985,stroke-width:2px
+"""
 
-    # -------------------------------------------------
-    # DEPLOYMENT STEPS
-    # -------------------------------------------------
-    st.header("📋 Deployment Steps")
-
-    for i, block in enumerate(result["blocks"], 1):
-        with st.expander(f"Step {i}: {block['title']}"):
-            st.markdown(f"**Purpose:** {block['description']}")
-
-    # -------------------------------------------------
-    # GOVERNANCE SECTION (STATIC – LEADERSHIP READY)
-    # -------------------------------------------------
-    st.divider()
-    st.header("🛡️ SOAR Governance & Automation Boundaries")
-
-    st.markdown("""
-This SOAR playbook follows **enterprise governance principles** to ensure
-safe, auditable, and responsible automation.
-""")
-
-    # --- Automation Principles ---
-    st.subheader("🔐 Automation Principles")
-
-    st.markdown("""
-- ✅ SOAR automates **data collection, enrichment, and correlation**
-- ⚠️ High-impact actions are **conditionally executed**
-- 👤 Identity-related actions require **human validation**
-- 🧾 Evidence is preserved **before containment**
-- 🚫 No response is executed based on a **single signal**
-""")
-
-    # --- Decision Ownership ---
-    st.subheader("👥 Decision Ownership Matrix")
-
-    st.table({
-        "Action Type": [
-            "Log enrichment & context gathering",
-            "Threat intelligence scoring",
-            "Network IP blocking",
-            "Endpoint isolation",
-            "User account lock / reset",
-            "Incident escalation & closure"
-        ],
-        "Owner": [
-            "SOAR Automation",
-            "SOAR Automation",
-            "SOAR (Conditional)",
-            "SOAR (Conditional)",
-            "SOC Analyst",
-            "Incident Response Team"
-        ]
-    })
-
-    # --- Automation Confidence ---
-    st.subheader("📊 Automation Confidence Levels")
-
-    st.markdown("""
-- 🟢 **Fully Automated** – Safe, reversible, low-risk actions  
-- 🟡 **Conditional Automation** – Executed after confidence thresholds  
-- 🔴 **Human Approval Required** – High-impact or identity actions  
-""")
-
-    # -------------------------------------------------
-    # EXECUTION FLOW (MERMAID)
-    # -------------------------------------------------
-    st.divider()
-    st.header("🧭 SOAR Execution Flow")
-
-    mermaid_code = """
-    flowchart TD
-        A[Alert Validation & Enrichment] --> B[Threat Intelligence Lookup]
-        B --> C[Containment Decision]
-        C -->|Confirmed Threat| D[Auto Containment]
-        D --> E[Isolate Host / Block IP]
-        E --> F[Preserve Evidence]
-        F --> G[Notify IR Team]
-        C -->|Uncertain| H[Human Review]
-        H --> I[SOC Analyst Decision]
-    """
-
+def render_mermaid(code: str):
     components.html(
         f"""
         <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-        <script>mermaid.initialize({{ startOnLoad: true }});</script>
-        <div class="mermaid">{mermaid_code}</div>
+        <script>
+            mermaid.initialize({{
+                startOnLoad: true,
+                theme: "default",
+                flowchart: {{ curve: "linear" }}
+            }});
+        </script>
+        <div class="mermaid">{code}</div>
         """,
-        height=520
+        height=700,
+        scrolling=True
     )
 
-    # -------------------------------------------------
-    # DOWNLOAD SVG
-    # -------------------------------------------------
-    st.download_button(
-        label="⬇️ Download SOAR Playbook (SVG)",
-        data=mermaid_code,
-        file_name="soar_execution_flow.svg",
-        mime="image/svg+xml"
-    )
+# -------------------------------------------------
+# UI
+# -------------------------------------------------
+st.title("🚀 SOAR Deployment View")
+st.markdown("Production-ready response flow with governance controls")
 
-    # -------------------------------------------------
-    # FINAL NOTE
-    # -------------------------------------------------
-    st.info(
-        "This deployment playbook is designed for **controlled automation**, "
-        "clear human ownership, and enterprise SOC operations."
-    )
+st.subheader("Describe the SIEM alert")
+alert_text = st.text_area(
+    "Example:",
+    placeholder="Suspicious PowerShell execution detected on endpoint...",
+    height=150
+)
+
+if st.button("Generate Deployment Playbook"):
+    if not alert_text.strip():
+        st.warning("Please describe the SIEM alert.")
+    else:
+        with st.spinner("Generating deployment playbook..."):
+            result = generate_playbook(
+                alert_text=alert_text,
+                mode="deployment",
+                depth="Advanced"
+            )
+
+        st.success("Deployment playbook generated")
+
+        # -----------------------------
+        # DEPLOYMENT STEPS
+        # -----------------------------
+        st.header("📋 Deployment Steps")
+        for i, block in enumerate(result["blocks"], 1):
+            with st.expander(f"Step {i}: {block['title']}"):
+                st.markdown(f"**Purpose:** {block.get('description','')}")
+                if block.get("automation"):
+                    st.markdown(f"⚙️ **Automation:** {block['automation']}")
+                if block.get("human_gate"):
+                    st.markdown(f"👤 **Human Gate:** {block['human_gate']}")
+
+        # -----------------------------
+        # EXECUTION FLOW
+        # -----------------------------
+        st.header("🧭 SOAR Execution Flow")
+        flow = build_execution_flow()
+        render_mermaid(flow)
+
+        # -----------------------------
+        # SVG DOWNLOAD
+        # -----------------------------
+        st.download_button(
+            label="⬇️ Download SOAR Playbook (SVG)",
+            data=flow,
+            file_name="soar_execution_flow.svg",
+            mime="image/svg+xml"
+        )
