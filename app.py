@@ -4,29 +4,12 @@ import re
 import streamlit as st
 import streamlit.components.v1 as components
 from google import genai
-from io import BytesIO, StringIO
-from docx import Document
-from PyPDF2 import PdfReader
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # -------------------------------------------------
 # PAGE CONFIG
 # -------------------------------------------------
 st.set_page_config(page_title="SOAR Playbook Generator", layout="wide")
 st.caption("Built by Accenture")
-
-# -------------------------------------------------
-# SESSION STATE
-# -------------------------------------------------
-if "blocks" not in st.session_state:
-    st.session_state.blocks = None
-if "diagram_code" not in st.session_state:
-    st.session_state.diagram_code = None
-if "documentation" not in st.session_state:
-    st.session_state.documentation = None
-if "generated" not in st.session_state:
-    st.session_state.generated = False
 
 # -------------------------------------------------
 # API CONFIG
@@ -39,79 +22,54 @@ if not API_KEY:
 client = genai.Client(api_key=API_KEY)
 
 # -------------------------------------------------
-# SAFE JSON EXTRACTION (PRODUCTION SAFE)
+# SAFE JSON EXTRACTION
 # -------------------------------------------------
 def extract_json(text):
     try:
         return json.loads(text)
-    except Exception:
+    except:
         match = re.search(r"\{[\s\S]*\}", text)
-        if match:
-            try:
-                return json.loads(match.group())
-            except Exception:
-                return None
-        return None
+        if not match:
+            raise ValueError("Invalid JSON")
+        return json.loads(match.group())
 
 # -------------------------------------------------
-# PROMPTS
+# PROMPT
 # -------------------------------------------------
-def build_playbook_prompt(text, learning_level):
+def build_prompt(use_case, depth):
     return f"""
-You are a senior SOAR engineer.
+You are a senior SOC SOAR architect.
 
-Return ONLY valid JSON.
-No markdown. No explanations.
-
-Generate a FULL multi-step SOAR playbook.
+Return ONLY valid JSON. No markdown. No explanation.
 
 Schema:
 {{
   "blocks": [
     {{
-      "step": "",
-      "block_name": "",
-      "learning_explanation": "",
+      "title": "",
+      "why": "",
       "soc_role": "",
       "if_skipped": "",
-      "siem_mapping": {{
-        "detection_type": "",
-        "log_sources": [],
-        "mitre_technique": "",
-        "automation_level": ""
-      }}
+      "decision_logic": "",
+      "automation_risk": "",
+      "human_takeover": ""
     }}
   ]
 }}
 
-Learning depth: {learning_level}
+Learning depth: {depth}
 
-Input:
-{text}
+Use case:
+{use_case}
 """
 
 # -------------------------------------------------
-# FILE HELPERS
-# -------------------------------------------------
-def extract_text_from_pdf(file):
-    reader = PdfReader(file)
-    return "\n".join(p.extract_text() or "" for p in reader.pages)
-
-def extract_text_from_docx(file):
-    doc = Document(file)
-    return "\n".join(p.text for p in doc.paragraphs)
-
-def extract_text_from_txt(file):
-    return StringIO(file.getvalue().decode()).read()
-
-# -------------------------------------------------
-# MERMAID DIAGRAM
+# MERMAID
 # -------------------------------------------------
 def generate_mermaid(blocks):
     lines = ["flowchart LR"]
-
     for i, b in enumerate(blocks):
-        lines.append(f'B{i}["{b["block_name"]}"]:::core')
+        lines.append(f'B{i}["{b["title"]}"]:::core')
         if i > 0:
             lines.append(f'B{i-1} --> B{i}')
 
@@ -119,20 +77,9 @@ def generate_mermaid(blocks):
     lines.append(f'B{len(blocks)-1} --> D')
 
     lines += [
-        'HC1["Auto Containment"]:::contain',
-        'HC2["Disable / Block"]:::contain',
-        'HC3["Preserve Evidence"]:::evidence',
-        'HC4["Notify L2 / IR"]:::notify',
-        'D -->|High| HC1',
-        'HC1 --> HC2 --> HC3 --> HC4',
-        'LC1["Manual Review"]:::manual',
-        'LC2["L1 Analysis"]:::manual',
-        'LC3["Close / Escalate"]:::notify',
-        'D -->|Low / Medium| LC1',
-        'LC1 --> LC2 --> LC3',
-    ]
-
-    lines += [
+        'D -->|High| HC1["Auto Containment"]:::contain',
+        'HC1 --> HC2["Disable / Block"]:::contain --> HC3["Preserve Evidence"]:::evidence --> HC4["Notify L2 / IR"]:::notify',
+        'D -->|Low / Medium| LC1["Manual Review"]:::manual --> LC2["L1 Analysis"]:::manual --> LC3["Close / Escalate"]:::notify',
         "classDef core fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px",
         "classDef decision fill:#f59e0b,stroke:#b45309,stroke-width:3px",
         "classDef contain fill:#dc2626,color:#fff",
@@ -140,43 +87,14 @@ def generate_mermaid(blocks):
         "classDef notify fill:#16a34a,color:#fff",
         "classDef manual fill:#6b7280,color:#fff",
     ]
-
     return "\n".join(lines)
 
 def render_mermaid(code):
-    html = f"""
+    components.html(f"""
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-    <script>
-      mermaid.initialize({{ startOnLoad:true }});
-      function downloadSVG() {{
-        const svg = document.querySelector(".mermaid svg");
-        const s = new XMLSerializer().serializeToString(svg);
-        const b = new Blob([s], {{type:"image/svg+xml"}});
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(b);
-        a.download = "soar_workflow.svg";
-        a.click();
-      }}
-    </script>
-    <button onclick="downloadSVG()">⬇️ Download Workflow (SVG)</button>
+    <script>mermaid.initialize({{ startOnLoad:true }});</script>
     <div class="mermaid">{code}</div>
-    """
-    components.html(html, height=650, scrolling=True)
-
-# -------------------------------------------------
-# PDF
-# -------------------------------------------------
-def generate_pdf(text):
-    buf = BytesIO()
-    styles = getSampleStyleSheet()
-    body = ParagraphStyle("Body", parent=styles["Normal"], spaceAfter=12)
-    story = []
-    for p in text.split("\n\n"):
-        story.append(Paragraph(p.replace("\n", "<br/>"), body))
-        story.append(Spacer(1, 12))
-    SimpleDocTemplate(buf).build(story)
-    buf.seek(0)
-    return buf.read()
+    """, height=600)
 
 # -------------------------------------------------
 # UI
@@ -184,66 +102,49 @@ def generate_pdf(text):
 st.title("🛡️ SOAR Playbook Generator")
 
 output_mode = st.radio("Output Mode", ["Learning Mode", "Deployment Mode"], horizontal=True)
+learning_depth = st.radio("Learning Depth", ["Beginner", "Intermediate", "Advanced"], horizontal=True)
 
-learning_level = None
-if output_mode == "Learning Mode":
-    learning_level = st.radio("Learning Depth", ["Beginner", "Intermediate", "Advanced"], horizontal=True)
-
-input_type = st.radio("Input Type", ["Use Case", "IRP (Document Upload)"], horizontal=True)
-
-input_text = ""
-
-if input_type == "IRP (Document Upload)":
-    file = st.file_uploader("Upload IRP", type=["pdf", "docx", "txt"])
-    if file:
-        input_text = (
-            extract_text_from_pdf(file)
-            if file.type == "application/pdf"
-            else extract_text_from_docx(file)
-            if file.type.endswith("document")
-            else extract_text_from_txt(file)
-        )
-else:
-    input_text = st.text_area("Use Case", height=200)
+use_case = st.text_area(
+    "Use Case",
+    height=200,
+    placeholder="Describe the alert raised by SIEM..."
+)
 
 # -------------------------------------------------
 # GENERATE
 # -------------------------------------------------
 if st.button("Generate Playbook"):
-    with st.spinner("Generating SOAR playbook..."):
+    with st.spinner("Generating SOAR intelligence..."):
         resp = client.models.generate_content(
             model="models/gemini-2.5-flash",
-            contents=build_playbook_prompt(input_text, learning_level)
+            contents=build_prompt(use_case, learning_depth)
         )
 
-    data = extract_json(resp.text)
+    try:
+        data = extract_json(resp.text)
+        blocks = data["blocks"]
+        st.success("Playbook generated")
 
-    if not data or "blocks" not in data:
-        st.error("Model returned invalid output. Please click Generate again.")
-        st.stop()
-
-    st.session_state.blocks = data["blocks"]
-    st.session_state.diagram_code = generate_mermaid(data["blocks"])
-    st.session_state.generated = True
-
-# -------------------------------------------------
-# OUTPUT
-# -------------------------------------------------
-if st.session_state.generated:
-    st.success("Playbook generated")
-
-    if output_mode == "Learning Mode":
+        # -----------------------------
+        # BLOCK-LEVEL LEARNING
+        # -----------------------------
         st.header("📘 Block-Level Learning")
-        for b in st.session_state.blocks:
-            with st.expander(f'{b["step"]}: {b["block_name"]}'):
-                st.markdown(f"**Why this step exists:** {b['learning_explanation']}")
+
+        for i, b in enumerate(blocks, 1):
+            with st.expander(f"Step {i}: {b['title']}"):
+                st.markdown(f"**Why this step exists:** {b['why']}")
                 st.markdown(f"**SOC Role:** {b['soc_role']}")
                 st.markdown(f"**If skipped:** {b['if_skipped']}")
-                st.markdown("**SIEM → SOAR Mapping**")
-                st.markdown(f"- Detection Type: {b['siem_mapping']['detection_type']}")
-                st.markdown(f"- Log Sources: {', '.join(b['siem_mapping']['log_sources'])}")
-                st.markdown(f"- MITRE: {b['siem_mapping']['mitre_technique']}")
-                st.markdown(f"- Automation Level: {b['siem_mapping']['automation_level']}")
+                st.markdown("---")
+                st.markdown(f"🧠 **Decision Logic:** {b['decision_logic']}")
+                st.markdown(f"⚠️ **Automation Risk:** {b['automation_risk']}")
+                st.markdown(f"👤 **Human Takeover:** {b['human_takeover']}")
 
-    st.header("SOAR Workflow")
-    render_mermaid(st.session_state.diagram_code)
+        # -----------------------------
+        # WORKFLOW
+        # -----------------------------
+        st.header("SOAR Workflow")
+        render_mermaid(generate_mermaid(blocks))
+
+    except Exception as e:
+        st.error("Model output could not be parsed. Click Generate again.")
