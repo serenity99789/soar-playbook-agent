@@ -15,8 +15,10 @@ st.set_page_config(
 # ---------------------------------
 if "lp_state" not in st.session_state:
     st.session_state.lp_state = "intro"  # intro | learning
+
 if "lp_level" not in st.session_state:
     st.session_state.lp_level = None
+
 if "siemmy_open" not in st.session_state:
     st.session_state.siemmy_open = True
 
@@ -49,6 +51,7 @@ st.divider()
 # Intro / Level Selection
 # ---------------------------------
 if st.session_state.lp_state == "intro":
+
     st.subheader("How SOC teams think — not just what they automate")
 
     st.markdown(
@@ -67,11 +70,13 @@ if st.session_state.lp_state == "intro":
     if st.button("Start Learning"):
         st.session_state.lp_level = level.lower()
         st.session_state.lp_state = "learning"
+        st.rerun()
 
 # ---------------------------------
-# Learning Content
+# Learning Content (SAFE)
 # ---------------------------------
-if st.session_state.lp_state == "learning":
+if st.session_state.lp_state == "learning" and st.session_state.lp_level:
+
     st.caption(f"Level: {st.session_state.lp_level.capitalize()}")
 
     left, right = st.columns([6, 4])
@@ -84,37 +89,38 @@ if st.session_state.lp_state == "learning":
 
     with right:
         st.subheader("SOAR Workflow")
-        st.image("soar_playbook.svg", use_column_width=True)
+        if os.path.exists("soar_playbook.svg"):
+            st.image("soar_playbook.svg", use_column_width=True)
+        else:
+            st.info("SOAR workflow diagram will appear here.")
 
 # ---------------------------------
-# 🔹 SIEMMY FLOATING CHATBOT
+# 🔹 SIEMMY — FLOATING AI MENTOR
 # ---------------------------------
 components.html(
-    f"""
+    """
     <style>
-    .siemmy-container {{
+    .siemmy-container {
         position: fixed;
         bottom: 20px;
         right: 20px;
         width: 320px;
         z-index: 9999;
         font-family: sans-serif;
-    }}
-    .siemmy-header {{
+    }
+    .siemmy-header {
         background: #ff4b4b;
         color: white;
         padding: 10px;
         border-radius: 10px 10px 0 0;
-        cursor: pointer;
         font-weight: bold;
-    }}
-    .siemmy-body {{
+    }
+    .siemmy-body {
         background: white;
         border: 1px solid #ddd;
         border-top: none;
         padding: 10px;
-        display: {"block" if st.session_state.siemmy_open else "none"};
-    }}
+    }
     </style>
 
     <div class="siemmy-container">
@@ -124,9 +130,14 @@ components.html(
         <div class="siemmy-body">
             <p><b>Hey 👋 I’m Siemmy.</b><br>
             Want help understanding <b>SOC, SIEM, or SOAR</b>?</p>
-            <input type="text" placeholder="Ask me anything…" style="width:100%;padding:6px;" disabled />
+
+            <input type="text"
+                placeholder="Ask me anything…"
+                style="width:100%;padding:6px;"
+                disabled />
+
             <p style="font-size:12px;color:#888;margin-top:6px;">
-            (AI mentor logic comes next)
+            AI mentor logic coming next
             </p>
         </div>
     </div>
