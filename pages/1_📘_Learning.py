@@ -59,17 +59,7 @@ def render_workflow_diagram(level: str):
         """
 
     html = f"""
-    <style>
-        .mermaid svg {{
-            max-width: none !important;
-            width: auto !important;
-            height: auto !important;
-            transform: scale(1.6);
-            transform-origin: top left;
-        }}
-    </style>
-
-    <div style="width:100%; overflow:auto; padding:20px;">
+    <div style="width:100%; overflow-x:auto; padding-top:10px;">
         <div class="mermaid">
             {diagram}
         </div>
@@ -81,15 +71,15 @@ def render_workflow_diagram(level: str):
         startOnLoad: true,
         theme: 'default',
         flowchart: {{
-          nodeSpacing: 80,
-          rankSpacing: 120,
-          curve: 'basis'
+          nodeSpacing: 70,
+          rankSpacing: 90,
+          curve: 'linear'
         }}
       }});
     </script>
     """
 
-    components.html(html, height=520, scrolling=True)
+    components.html(html, height=260, scrolling=False)
 
 # -------------------------------------------------
 # Session State
