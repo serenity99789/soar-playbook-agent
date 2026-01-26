@@ -1,44 +1,56 @@
-import sys
-from pathlib import Path
-
-# --- Ensure project root is on PYTHONPATH ---
-ROOT_DIR = Path(__file__).resolve().parent.parent
-if str(ROOT_DIR) not in sys.path:
-    sys.path.append(str(ROOT_DIR))
-
 import streamlit as st
-from core.playbook_engine import generate_playbook
+from pathlib import Path
+import importlib.util
 
+# -------------------------------------------------
+# LOAD CORE ENGINE BY FILE PATH (GUARANTEED)
+# -------------------------------------------------
+ENGINE_PATH = Path(__file__).resolve().parents[1] / "core" / "playbook_engine.py"
 
-# ---------------- UI ----------------
+spec = importlib.util.spec_from_file_location(
+    "playbook_engine",
+    ENGINE_PATH
+)
+playbook_engine = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(playbook_engine)
+
+generate_playbook = playbook_engine.generate_playbook
+
+# -------------------------------------------------
+# PAGE CONFIG
+# -------------------------------------------------
 st.set_page_config(
     page_title="SOAR Learning Platform",
     page_icon="📘",
     layout="wide"
 )
 
-st.markdown("Built for enterprise SOC learning")
+st.caption("Built for enterprise SOC learning")
 
 st.title("📘 SOAR Learning Platform")
 st.info(
-    "This section teaches **how SIEM alerts translate into SOAR workflows**, "
+    "This section teaches how SIEM alerts translate into SOAR workflows, "
     "why each response step exists, and how SOC teams reason during incidents."
 )
 
-st.subheader("Learning Depth")
+# -------------------------------------------------
+# UI
+# -------------------------------------------------
 depth = st.radio(
-    "Choose your level",
+    "Learning Depth",
     ["Beginner", "Intermediate", "Advanced"],
     horizontal=True
 )
 
-st.subheader("Describe the alert raised by SIEM")
 alert_text = st.text_area(
-    "Example:",
+    "Describe the alert raised by SIEM",
     placeholder="Multiple failed login attempts from a single external IP...",
     height=160
 )
 
+# -------------------------------------------------
+# GENERATE
+# -------------------------------------------------
 if st.button("Generate Learning Playbook"):
     if not alert_text.strip():
         st.warning("Please describe the SIEM alert.")
