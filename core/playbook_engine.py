@@ -1,89 +1,111 @@
 import os
+import json
+import re
 from typing import Dict, Any
 
 from google import genai
 
 
-# -------------------------
+# -----------------------------
 # Gemini Client
-# -------------------------
-def get_gemini_client():
-    api_key = os.getenv("GOOGLE_API_KEY")
+# -----------------------------
+def get_gemini_client() -> genai.Client:
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        raise RuntimeError("GOOGLE_API_KEY not set")
+        raise RuntimeError("GEMINI_API_KEY / GOOGLE_API_KEY not set")
 
     return genai.Client(api_key=api_key)
 
 
-# -------------------------
-# Main Playbook Generator
-# -------------------------
-def generate_playbook(
-    alert_text: str,
-    mode: str = "deployment",
-    depth: str = "Advanced",
-) -> Dict[str, Any]:
-    """
-    Generates a SOAR playbook using Gemini.
-    This is REAL generation — no cache, no placeholders.
-    """
+# -----------------------------
+# Safe JSON extraction
+# -----------------------------
+def extract_json(text: str) -> Dict[str, Any]:
+    try:
+        return json.loads(text)
+    except Exception:
+        match = re.search(r"\{[\s\S]*\}", text)
+        if not match:
+            raise ValueError("No valid JSON found in model output")
+        return json.loads(match.group())
 
-    client = get_gemini_client()
 
-    system_prompt = f"""
-You are an enterprise-grade SOAR architect.
+# -----------------------------
+# Prompt Builder
+# -----------------------------
+def build_prompt(alert_text: str, mode: str, depth: str) -> str:
+    return f"""
+You are an enterprise-grade SOAR architect working in a Tier-1 SOC.
 
-Analyze the given SIEM alert deeply and produce a REAL, technical SOAR playbook.
+Your task:
+- Analyze the SIEM alert below
+- Design a REAL production SOAR playbook
+- Use SOC reasoning, not generic steps
+- Reflect how tools like Cortex XSOAR / Splunk SOAR actually work
 
 Rules:
-- NO generic steps
-- NO placeholders
-- Think like a SOC + IR lead
-- Use conditional logic, decision points, and real security controls
-- Assume tools like SIEM, EDR, IAM, Firewall, SOAR platform exist
-- Output must be structured and actionable
+- DO NOT be generic
+- DO NOT invent fake tools
+- Use realistic SOC actions
+- Be technically precise
+- Assume this will be reviewed by security leadership
+
+Output MUST be valid JSON only.
+No markdown. No explanations. No extra text.
+
+JSON Schema:
+{{
+  "summary": "One-paragraph technical summary of the incident",
+  "confidence": "Low | Medium | High",
+  "blocks": [
+    {{
+      "id": "string",
+      "title": "string",
+      "type": "enrichment | decision | automation | human",
+      "description": "string"
+    }}
+  ]
+}}
 
 Mode: {mode}
 Depth: {depth}
-"""
 
-    user_prompt = f"""
-SIEM Alert / Use Case:
+SIEM Alert:
 {alert_text}
+""".strip()
 
-Generate:
-1. Detailed SOAR execution stages
-2. Decision logic (conditions, branches)
-3. Automation vs Human checkpoints
-4. Incident lifecycle actions
-"""
+
+# -----------------------------
+# Main Playbook Generator
+# -----------------------------
+def generate_playbook(
+    alert_text: str,
+    mode: str,
+    depth: str
+) -> Dict[str, Any]:
+
+    client = get_gemini_client()
+    prompt = build_prompt(alert_text, mode, depth)
 
     try:
         response = client.models.generate_content(
             model="models/gemini-2.5-flash",
             contents=[
-                {"role": "system", "parts": [{"text": system_prompt}]},
-                {"role": "user", "parts": [{"text": user_prompt}]},
+                {
+                    "role": "user",
+                    "parts": [{"text": prompt}]
+                }
             ],
-            config={
-                "temperature": 0.3,
-                "top_p": 0.9,
-                "max_output_tokens": 2048,
-            },
         )
     except Exception as e:
         raise RuntimeError(f"Gemini request failed: {e}")
 
-    # -------------------------
-    # Parse response safely
-    # -------------------------
-    try:
-        text_output = response.text
-    except Exception:
-        raise RuntimeError("Gemini returned no text output")
+    if not response.text:
+        raise RuntimeError("Empty response from Gemini")
 
-    return {
-        "raw_text": text_output,
-        "mode": mode,
-        "depth": depth,
-    }
+    data = extract_json(response.text)
+
+    if "blocks" not in data:
+        raise RuntimeError("Invalid playbook structure returned")
+
+    return data
