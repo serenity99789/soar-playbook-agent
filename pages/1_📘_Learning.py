@@ -1,147 +1,109 @@
 import streamlit as st
+import os
 
-# ---------------------------
-# Page Config
-# ---------------------------
+# --------------------------------------------------
+# Page config
+# --------------------------------------------------
 st.set_page_config(
     page_title="SOAR Learning Platform",
     layout="wide"
 )
 
-# ---------------------------
-# Session State Init
-# ---------------------------
+# --------------------------------------------------
+# Helpers
+# --------------------------------------------------
+LEARNING_DIR = "learning"
+
+LEVEL_FILE_MAP = {
+    "beginner": "beginner.md",
+    "intermediate": "intermediate.md",
+    "advanced": "advanced.md",
+}
+
+
+def load_markdown(level: str) -> str:
+    filename = LEVEL_FILE_MAP.get(level)
+    if not filename:
+        return "❌ Invalid learning level selected."
+
+    path = os.path.join(LEARNING_DIR, filename)
+    if not os.path.exists(path):
+        return f"❌ Learning content not found for **{level}**."
+
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def reset_learning():
+    st.session_state.learning_started = False
+    st.session_state.lp_level = None
+
+
+# --------------------------------------------------
+# Session state init
+# --------------------------------------------------
+if "learning_started" not in st.session_state:
+    st.session_state.learning_started = False
+
 if "lp_level" not in st.session_state:
     st.session_state.lp_level = None
 
-if "siemmy_open" not in st.session_state:
-    st.session_state.siemmy_open = False
+# --------------------------------------------------
+# Top navigation
+# --------------------------------------------------
+top_left, top_right = st.columns([6, 1])
 
-if "siemmy_messages" not in st.session_state:
-    st.session_state.siemmy_messages = []
-
-# ---------------------------
-# Home Button
-# ---------------------------
-col1, col2 = st.columns([6, 1])
-with col2:
+with top_right:
     if st.button("🏠 Home"):
-        st.session_state.lp_level = None
-        st.session_state.siemmy_messages = []
-        st.session_state.siemmy_open = False
-        st.experimental_rerun()
+        reset_learning()
+        st.rerun()
 
-# ---------------------------
-# Hero Section
-# ---------------------------
-st.title("SOAR Learning Platform")
-st.markdown("---")
+# --------------------------------------------------
+# HERO / LEVEL SELECTION
+# --------------------------------------------------
+if not st.session_state.learning_started:
+    st.markdown("# SOAR Learning Platform")
+    st.markdown("---")
 
-st.markdown(
-    """
-    ## How SOC teams think — not just what they automate  
-    Learn **SOC, SIEM, and SOAR** the way analysts actually use them.  
-    Choose your level and start learning with real workflows.
-    """
-)
+    st.markdown(
+        """
+        ## How SOC teams think — not just what they automate
 
-# ---------------------------
-# Level Selection
-# ---------------------------
-st.markdown("### Select your current level")
+        Learn **SOC, SIEM, and SOAR** the way analysts actually use them.
+        Choose your level and start learning with **real workflows**, not theory dumps.
+        """
+    )
 
-level = st.radio(
-    "",
-    ["Beginner", "Intermediate", "Advanced"],
-    index=0,
-    horizontal=True
-)
+    st.markdown("### Select your current level")
 
-if st.button("Start Learning"):
-    st.session_state.lp_level = level.lower()
-    st.success(f"Level set to **{level}**")
+    selected_level = st.radio(
+        label="",
+        options=["Beginner", "Intermediate", "Advanced"],
+        horizontal=True
+    )
 
-# ---------------------------
-# Floating Siemmy Button
-# ---------------------------
-st.markdown(
-    """
-    <style>
-    .siemmy-button {
-        position: fixed;
-        bottom: 24px;
-        right: 24px;
-        background-color: #ff4b4b;
-        color: white;
-        padding: 12px 18px;
-        border-radius: 999px;
-        font-weight: 600;
-        cursor: pointer;
-        z-index: 1000;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.2);
-    }
-    .siemmy-box {
-        position: fixed;
-        bottom: 90px;
-        right: 24px;
-        width: 320px;
-        background: white;
-        border-radius: 14px;
-        padding: 16px;
-        z-index: 1000;
-        box-shadow: 0 12px 30px rgba(0,0,0,0.25);
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+    if st.button("Start Learning"):
+        st.session_state.lp_level = selected_level.lower()
+        st.session_state.learning_started = True
+        st.rerun()
 
-# Toggle button
-if st.button("👋 Siemmy", key="siemmy_toggle"):
-    st.session_state.siemmy_open = not st.session_state.siemmy_open
+# --------------------------------------------------
+# LEARNING VIEW
+# --------------------------------------------------
+else:
+    level = st.session_state.lp_level
 
-# ---------------------------
-# Floating Siemmy Chat
-# ---------------------------
-if st.session_state.siemmy_open:
-    with st.container():
-        st.markdown(
-            """
-            <div class="siemmy-box">
-                <strong>👋 Hi, I’m Siemmy</strong><br>
-                <small>Your SOC learning mentor</small>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    st.markdown(f"# {level.capitalize()} Level")
+    st.caption("You can change levels anytime using the Home button.")
+    st.markdown("---")
 
-        user_input = st.text_input(
-            "Ask Siemmy…",
-            key="siemmy_input"
-        )
+    content = load_markdown(level)
+    st.markdown(content, unsafe_allow_html=True)
 
-        if user_input:
-            # Greeting logic
-            msg = user_input.strip().lower()
+    st.markdown("---")
 
-            if msg in ["hi", "hello", "hey"]:
-                response = (
-                    "Hey! 👋 I’m Siemmy.\n\n"
-                    "I can help you understand **SOC**, **SIEM**, and **SOAR**.\n"
-                    "Ask me anything, or start learning by choosing a level above."
-                )
-            else:
-                response = (
-                    "Good question. In SOC environments, automation exists to **support analysts**, "
-                    "not replace judgment. Want me to explain this with a real example?"
-                )
-
-            st.session_state.siemmy_messages.append(
-                ("You", user_input)
-            )
-            st.session_state.siemmy_messages.append(
-                ("Siemmy", response)
-            )
-
-        for speaker, text in st.session_state.siemmy_messages[-6:]:
-            st.markdown(f"**{speaker}:** {text}")
+    bottom_cols = st.columns([1, 1, 6])
+    with bottom_cols[0]:
+        if st.button("🔁 Change Level"):
+            reset_learning()
+            st.rerun()
