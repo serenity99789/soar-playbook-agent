@@ -1,4 +1,9 @@
 import streamlit as st
+import os
+
+from core.diagram_engine import build_soar_mermaid
+import streamlit.components.v1 as components
+
 
 # -------------------------------------------------
 # Page Config
@@ -12,20 +17,77 @@ st.set_page_config(
 # Session State
 # -------------------------------------------------
 if "lp_state" not in st.session_state:
-    # Possible values: "intro", "level_select", "learning"
+    # intro | level_select | learning
     st.session_state.lp_state = "intro"
 
 if "learning_level" not in st.session_state:
-    # Possible values: "Beginner", "Intermediate", "Advanced"
+    # Beginner | Intermediate | Advanced
     st.session_state.learning_level = None
 
 
 # -------------------------------------------------
-# Helper: Reset to Level Selection
+# Helpers
 # -------------------------------------------------
 def reset_level():
     st.session_state.lp_state = "level_select"
     st.session_state.learning_level = None
+
+
+def load_learning_markdown(level: str) -> str:
+    """
+    Load static markdown content for the selected level.
+    """
+    filename_map = {
+        "Beginner": "learning/beginner.md",
+        "Intermediate": "learning/intermediate.md",
+        "Advanced": "learning/advanced.md",
+    }
+
+    path = filename_map.get(level)
+
+    if not path or not os.path.exists(path):
+        return (
+            "### Learning content not found\n\n"
+            "This is expected during early build stages.\n\n"
+            "The markdown file for this level will be added next."
+        )
+
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def render_mermaid_diagram():
+    """
+    Render the SOAR workflow diagram using the existing diagram engine.
+    """
+    # Minimal static block structure for learning view
+    blocks = [
+        {"title": "Normalize & Parse", "type": "enrichment"},
+        {"title": "Context Enrichment", "type": "enrichment"},
+        {"title": "Threat Confirmed?", "type": "decision"},
+        {"title": "Automated Containment", "type": "automation"},
+        {"title": "Human Review", "type": "human"},
+    ]
+
+    mermaid = build_soar_mermaid(blocks)
+
+    mermaid_html = f"""
+    <html>
+      <head>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+        <script>
+          mermaid.initialize({{ startOnLoad: true, theme: 'default' }});
+        </script>
+      </head>
+      <body>
+        <div class="mermaid">
+        {mermaid}
+        </div>
+      </body>
+    </html>
+    """
+
+    components.html(mermaid_html, height=650, scrolling=True)
 
 
 # =================================================
@@ -50,14 +112,13 @@ if st.session_state.lp_state == "intro":
     )
 
     col1, col2, col3 = st.columns([1, 1, 1])
-
     with col2:
         if st.button("Start Learning", type="primary", use_container_width=True):
             st.session_state.lp_state = "level_select"
 
 
 # =================================================
-# STATE 1 — LEVEL SELECTION (CARDS)
+# STATE 1 — LEVEL SELECTION
 # =================================================
 elif st.session_state.lp_state == "level_select":
 
@@ -70,45 +131,39 @@ elif st.session_state.lp_state == "level_select":
 
     with c1:
         st.markdown("### 🔰 Beginner")
-        st.write(
-            "I’m new to SOC, SIEM, or SOAR and want to understand the fundamentals."
-        )
+        st.write("New to SOC, SIEM, or SOAR. Start from the fundamentals.")
         if st.button("Select Beginner", use_container_width=True):
             st.session_state.learning_level = "Beginner"
             st.session_state.lp_state = "learning"
 
     with c2:
         st.markdown("### ⚙️ Intermediate")
-        st.write(
-            "I understand SOC alerts and investigations and want to learn automation and playbooks."
-        )
+        st.write("Understand SOC alerts. Learn automation and playbooks.")
         if st.button("Select Intermediate", use_container_width=True):
             st.session_state.learning_level = "Intermediate"
             st.session_state.lp_state = "learning"
 
     with c3:
         st.markdown("### 🧠 Advanced")
-        st.write(
-            "I understand SOC workflows and want to learn SOAR design and governance."
-        )
+        st.write("Focus on SOAR design, governance, and automation trade-offs.")
         if st.button("Select Advanced", use_container_width=True):
             st.session_state.learning_level = "Advanced"
             st.session_state.lp_state = "learning"
 
 
 # =================================================
-# STATE 2 — LEARNING MODE (PLACEHOLDER)
+# STATE 2 — LEARNING MODE
 # =================================================
 elif st.session_state.lp_state == "learning":
 
     # ---------------- Top Bar ----------------
-    top_left, top_right = st.columns([4, 1])
+    left_top, right_top = st.columns([4, 1])
 
-    with top_left:
+    with left_top:
         st.title("SOAR Learning Platform")
         st.caption(f"Level: {st.session_state.learning_level}")
 
-    with top_right:
+    with right_top:
         st.button("Change level", on_click=reset_level)
 
     st.markdown("---")
@@ -116,26 +171,25 @@ elif st.session_state.lp_state == "learning":
     # ---------------- Main Layout ----------------
     left, right = st.columns([2, 1])
 
+    # -------- Learning Content (Markdown) --------
     with left:
         st.subheader("Learning Content")
-        st.info(
-            "Static learning content will appear here.\n\n"
-            "This will be rendered from predefined markdown files "
-            "based on the selected learning level."
+
+        markdown_text = load_learning_markdown(
+            st.session_state.learning_level
         )
 
-        st.write("This is intentionally empty in Build Step 1.")
+        # Render markdown inside expandable sections
+        with st.expander("Open learning sections", expanded=True):
+            st.markdown(markdown_text)
 
+    # -------- Diagram Panel --------
     with right:
-        st.subheader("SOAR Workflow Diagram")
-        st.info(
-            "The SOAR workflow diagram will be shown here.\n\n"
-            "The diagram layout will remain constant across all learning levels."
-        )
+        st.subheader("SOAR Workflow")
+        render_mermaid_diagram()
 
     st.markdown("---")
-
     st.caption(
-        "Next: Add markdown-based learning content, diagram rendering, "
-        "and collapsible sections."
+        "Build Step 2 complete: Static markdown content + SOAR diagram rendered.\n\n"
+        "Next: section-level accordions and AI mentor integration."
     )
