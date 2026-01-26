@@ -45,7 +45,12 @@ client = genai.Client(api_key=API_KEY)
 # -------------------------------------------------
 def build_playbook_prompt(text):
     return f"""
-You are a senior SOAR engineer and SOC architect.
+You are a senior SOAR engineer designing production-grade SOC playbooks.
+
+CRITICAL RULES:
+- Always generate a FULL SOAR lifecycle (minimum 5 blocks).
+- Include enrichment, investigation, decision, response, and closure steps.
+- Even if the input is simple, expand it into a realistic SOC workflow.
 
 Return ONLY valid JSON.
 No markdown. No explanation text.
@@ -72,7 +77,7 @@ Schema:
   ]
 }}
 
-Input:
+Use Case:
 {text}
 """
 
@@ -190,21 +195,6 @@ def render_mermaid(code):
     components.html(html, height=650, scrolling=True)
 
 # -------------------------------------------------
-# PDF
-# -------------------------------------------------
-def generate_pdf(text):
-    buf = BytesIO()
-    styles = getSampleStyleSheet()
-    body = ParagraphStyle("Body", parent=styles["Normal"], spaceAfter=12)
-    story = []
-    for p in text.split("\n\n"):
-        story.append(Paragraph(p.replace("\n", "<br/>"), body))
-        story.append(Spacer(1, 12))
-    SimpleDocTemplate(buf).build(story)
-    buf.seek(0)
-    return buf.read()
-
-# -------------------------------------------------
 # UI
 # -------------------------------------------------
 st.title("🛡️ SOAR Playbook Generator")
@@ -232,15 +222,16 @@ else:
 # GENERATE
 # -------------------------------------------------
 if st.button("Generate Playbook"):
-    response = client.models.generate_content(
-        model="models/gemini-2.5-flash",
-        contents=build_playbook_prompt(input_text)
-    )
-    data = extract_json_safely(response.text)
-    st.session_state.blocks = data["blocks"]
-    st.session_state.diagram_code = generate_mermaid(data["blocks"])
-    st.session_state.documentation = build_documentation(data["blocks"])
-    st.session_state.generated = True
+    with st.spinner("Generating SOAR playbook..."):
+        response = client.models.generate_content(
+            model="models/gemini-2.5-flash",
+            contents=build_playbook_prompt(input_text)
+        )
+        data = extract_json_safely(response.text)
+        st.session_state.blocks = data["blocks"]
+        st.session_state.diagram_code = generate_mermaid(data["blocks"])
+        st.session_state.documentation = build_documentation(data["blocks"])
+        st.session_state.generated = True
 
 # -------------------------------------------------
 # OUTPUT
