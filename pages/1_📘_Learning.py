@@ -20,6 +20,7 @@ def load_learning_markdown(level: str) -> str:
             return f.read()
     return "_Content coming soon._"
 
+
 def render_workflow_diagram(level: str):
     if level == "beginner":
         diagram = """
@@ -42,7 +43,7 @@ def render_workflow_diagram(level: str):
             C -- No --> F[Human Review]
             F --> E
         """
-    else:  # advanced
+    else:
         diagram = """
         flowchart LR
             A[Alert Trigger]
@@ -58,10 +59,20 @@ def render_workflow_diagram(level: str):
         """
 
     html = f"""
-    <div style="width:100%; display:flex; justify-content:center;">
-      <div class="mermaid">
-        {diagram}
-      </div>
+    <style>
+        .mermaid svg {{
+            max-width: none !important;
+            width: auto !important;
+            height: auto !important;
+            transform: scale(1.6);
+            transform-origin: top left;
+        }}
+    </style>
+
+    <div style="width:100%; overflow:auto; padding:20px;">
+        <div class="mermaid">
+            {diagram}
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
@@ -70,15 +81,15 @@ def render_workflow_diagram(level: str):
         startOnLoad: true,
         theme: 'default',
         flowchart: {{
-          nodeSpacing: 60,
-          rankSpacing: 80,
+          nodeSpacing: 80,
+          rankSpacing: 120,
           curve: 'basis'
         }}
       }});
     </script>
     """
 
-    components.html(html, height=420, scrolling=False)
+    components.html(html, height=520, scrolling=True)
 
 # -------------------------------------------------
 # Session State
@@ -93,7 +104,6 @@ if "lp_level" not in st.session_state:
 # Header
 # -------------------------------------------------
 st.title("SOAR Learning Platform")
-
 st.markdown("---")
 
 # -------------------------------------------------
@@ -128,12 +138,8 @@ else:
     col1, col2 = st.columns([3, 2])
 
     with col1:
-        st.markdown(
-            f"## {level.capitalize()} Level — SOC Workflows & Automation"
-        )
-
-        content = load_learning_markdown(level)
-        st.markdown(content)
+        st.markdown(f"## {level.capitalize()} Level — SOC Workflows & Automation")
+        st.markdown(load_learning_markdown(level))
 
     with col2:
         st.markdown("### Workflow Diagram")
