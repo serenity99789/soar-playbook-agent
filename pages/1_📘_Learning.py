@@ -11,6 +11,15 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
+# Session State
+# -------------------------------------------------
+if "lp_state" not in st.session_state:
+    st.session_state.lp_state = "intro"
+
+if "lp_level" not in st.session_state:
+    st.session_state.lp_level = "beginner"
+
+# -------------------------------------------------
 # Helpers
 # -------------------------------------------------
 def load_learning_markdown(level: str) -> str:
@@ -82,18 +91,19 @@ def render_workflow_diagram(level: str):
     components.html(html, height=260, scrolling=False)
 
 # -------------------------------------------------
-# Session State
+# Header with Home Button
 # -------------------------------------------------
-if "lp_state" not in st.session_state:
-    st.session_state.lp_state = "intro"
+header_col, home_col = st.columns([6, 1])
 
-if "lp_level" not in st.session_state:
-    st.session_state.lp_level = "beginner"
+with header_col:
+    st.title("SOAR Learning Platform")
 
-# -------------------------------------------------
-# Header
-# -------------------------------------------------
-st.title("SOAR Learning Platform")
+with home_col:
+    if st.button("🏠 Home"):
+        st.session_state.lp_state = "intro"
+        st.session_state.lp_level = "beginner"
+        st.rerun()
+
 st.markdown("---")
 
 # -------------------------------------------------
@@ -134,9 +144,3 @@ else:
     with col2:
         st.markdown("### Workflow Diagram")
         render_workflow_diagram(level)
-
-    st.markdown("---")
-
-    if st.button("Change Level"):
-        st.session_state.lp_state = "intro"
-        st.rerun()
