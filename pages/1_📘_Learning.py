@@ -1,166 +1,99 @@
 import streamlit as st
-import streamlit.components.v1 as components
 
-# --------------------------------
+# -------------------------------------------------
 # Page config
-# --------------------------------
+# -------------------------------------------------
 st.set_page_config(
     page_title="SOAR Learning Platform",
+    page_icon="📘",
     layout="wide"
 )
 
-# --------------------------------
+# -------------------------------------------------
 # Session state init
-# --------------------------------
-if "current_view" not in st.session_state:
-    st.session_state.current_view = "home"
+# -------------------------------------------------
+if "stage" not in st.session_state:
+    st.session_state.stage = "home"
 
 if "selected_level" not in st.session_state:
-    st.session_state.selected_level = "Beginner"
+    st.session_state.selected_level = None
 
-if "show_siemmy" not in st.session_state:
-    st.session_state.show_siemmy = False
+# -------------------------------------------------
+# Header + Home button
+# -------------------------------------------------
+col_title, col_home = st.columns([8, 2])
 
-# --------------------------------
-# Header
-# --------------------------------
-col1, col2 = st.columns([6, 1])
-with col1:
+with col_title:
     st.title("SOAR Learning Platform")
-with col2:
+
+with col_home:
     if st.button("🏠 Home"):
-        st.session_state.current_view = "home"
-        st.session_state.show_siemmy = False
+        st.session_state.stage = "home"
+        st.session_state.selected_level = None
 
 st.divider()
 
-# =========================================================
-# HOME VIEW — LEVEL SELECTION
-# =========================================================
-if st.session_state.current_view == "home":
-    st.header("Select your current level")
-
-    st.radio(
-        "",
-        ["Beginner", "Intermediate", "Advanced"],
-        key="selected_level"
+# -------------------------------------------------
+# HERO / HOME STAGE
+# -------------------------------------------------
+if st.session_state.stage == "home":
+    st.markdown(
+        """
+        <div style="text-align:center; padding:60px 0;">
+            <h1 style="font-size:42px;">Learn SOC, SIEM & SOAR the right way</h1>
+            <p style="font-size:18px; color:#555;">
+                Structured learning paths with real-world security workflows.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
-    if st.button("Start Learning"):
-        st.session_state.current_view = "learning"
+    st.markdown("<br>", unsafe_allow_html=True)
 
-# =========================================================
-# LEARNING VIEW
-# =========================================================
-if st.session_state.current_view == "learning":
-
-    left, right = st.columns([2, 1])
-
-    # --------------------------------
-    # LEFT: Learning Content
-    # --------------------------------
-    with left:
-        st.header(f"{st.session_state.selected_level} Level — Learning Content")
-
-        st.subheader("SOC Foundations")
-        st.markdown("""
-**What you’ll learn:**
-- What a SOC actually does  
-- SOC analyst day-to-day work  
-- What SIEM means in real operations  
-- What SOAR automates (and what it doesn’t)  
-- How alerts become incidents  
-- Why humans still matter in security  
-""")
-
-        st.divider()
-
-        st.markdown("""
-### 1. What is a SOC?
-A Security Operations Center (SOC) monitors, detects, investigates,
-and responds to security threats.
-
-### 2. SOC Analyst Day-to-Day
-Review alerts, enrich context, validate threats, escalate incidents,
-and document actions.
-
-### 3. What is SIEM?
-SIEM collects and correlates logs — it **does not respond**.
-
-### 4. What is SOAR?
-SOAR automates investigation and response **after detection**.
-
-### 5. Alert → Incident Lifecycle
-Not every alert becomes an incident. Humans decide.
-
-### 6. Why Humans Still Matter
-Automation supports analysts — accountability stays human.
-""")
-
-    # --------------------------------
-    # RIGHT: Workflow Diagram
-    # --------------------------------
-    with right:
-        st.subheader("Workflow Diagram")
-
-        mermaid_code = """
-        graph LR
-            A[Alert Trigger] --> B[Initial Triage]
-            B --> C[Basic Enrichment]
-            C --> D{Confidence High?}
-            D -- No --> E[Human Review]
-            D -- Yes --> F[Automated Action]
-            E --> F
-            F --> G[Update Case]
-        """
-
-        components.html(
-            f"""
-            <div style="background:#f8f9fa;padding:12px;border-radius:8px;">
-                <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-                <div class="mermaid">
-                {mermaid_code}
-                </div>
-                <script>
-                    mermaid.initialize({{ startOnLoad: true, theme: "default" }});
-                </script>
-            </div>
-            """,
-            height=320
+    center_col = st.columns([3, 2, 3])[1]
+    with center_col:
+        start = st.button(
+            "🚀 Start Learning",
+            use_container_width=True
         )
 
-# --------------------------------
-# SIEMMY (Floating Mentor)
-# --------------------------------
-st.markdown("""
-<style>
-#siemmy-box {
-    position: fixed;
-    bottom: 90px;
-    right: 24px;
-    width: 320px;
-    background: white;
-    border-radius: 12px;
-    padding: 14px;
-    box-shadow: 0 12px 24px rgba(0,0,0,0.25);
-    z-index: 9999;
-}
-</style>
-""", unsafe_allow_html=True)
+    # Style the button orange
+    st.markdown(
+        """
+        <style>
+        button[kind="primary"], button {
+            background-color: #ff4b4b !important;
+            color: white !important;
+            border-radius: 8px !important;
+            height: 3.5em !important;
+            font-size: 18px !important;
+            font-weight: 600 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
-if st.button("👋 Siemmy"):
-    st.session_state.show_siemmy = not st.session_state.show_siemmy
+    if start:
+        st.session_state.stage = "level_select"
 
-if st.session_state.show_siemmy:
-    st.markdown("""
-    <div id="siemmy-box">
-        <b>👋 Hi, I’m Siemmy</b><br><br>
-        I help you understand:
-        <ul>
-            <li>SOC workflows</li>
-            <li>SIEM vs SOAR</li>
-            <li>Why automation stops</li>
-        </ul>
-        <i>Ask me anything — I’m here to guide you.</i>
-    </div>
-    """, unsafe_allow_html=True)
+# -------------------------------------------------
+# LEVEL SELECTION STAGE
+# -------------------------------------------------
+elif st.session_state.stage == "level_select":
+    st.subheader("Select your current level")
+
+    st.markdown("Choose the learning path that best fits your experience.")
+
+    level = st.radio(
+        "",
+        ["Beginner", "Intermediate", "Advanced"],
+        index=0
+    )
+
+    if st.button("➡️ Continue"):
+        st.session_state.selected_level = level
+        # Next stage will be content (added later)
+        st.success(f"{level} level selected. Content coming next 🚧")
+
