@@ -1,3 +1,12 @@
+import sys
+from pathlib import Path
+
+# -------------------------------------------------
+# FIX IMPORT PATH (PROJECT ROOT)
+# -------------------------------------------------
+ROOT_DIR = Path(__file__).resolve().parents[1]
+sys.path.append(str(ROOT_DIR))
+
 import streamlit as st
 from core.playbook_engine import generate_playbook
 
@@ -43,8 +52,9 @@ if st.button("Generate Deployment Playbook"):
                 mode="deployment",
                 depth="Intermediate"
             )
-        except Exception:
+        except Exception as e:
             st.error("Failed to generate deployment playbook.")
+            st.code(str(e))
             st.stop()
 
     st.success("Deployment playbook generated")
@@ -78,12 +88,17 @@ if st.button("Generate Deployment Playbook"):
             st.divider()
 
             st.markdown("**Failure Handling / Escalation**")
-            st.markdown(block.get("failure_handling", "Escalate to SOC L2 / IR Team"))
+            st.markdown(
+                block.get(
+                    "failure_handling",
+                    "Escalate to SOC L2 / Incident Response team"
+                )
+            )
 
     # -------------------------------------------------
-    # FINAL NOTE
+    # FOOTER NOTE
     # -------------------------------------------------
     st.info(
-        "This deployment view is intentionally execution-focused. "
-        "All reasoning and learning context is handled in the Learning section."
+        "This view is intentionally execution-focused. "
+        "All learning context and analyst reasoning is handled in the Learning section."
     )
