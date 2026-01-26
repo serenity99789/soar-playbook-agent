@@ -1,5 +1,5 @@
 import streamlit as st
-from pathlib import Path
+import streamlit.components.v1 as components
 
 # --------------------------------------------------
 # Page Config
@@ -13,24 +13,45 @@ st.set_page_config(
 # Session State Init
 # --------------------------------------------------
 if "lp_state" not in st.session_state:
-    st.session_state.lp_state = "intro"  # intro | learning
+    st.session_state.lp_state = "intro"   # intro | learning
 
 if "lp_level" not in st.session_state:
-    st.session_state.lp_level = None
+    st.session_state.lp_level = "beginner"
 
 if "siemmy_open" not in st.session_state:
     st.session_state.siemmy_open = False
 
+if "siemmy_messages" not in st.session_state:
+    st.session_state.siemmy_messages = []
+
 # --------------------------------------------------
 # Helpers
 # --------------------------------------------------
-LEARNING_DIR = Path("learning")
+def reset_home():
+    st.session_state.lp_state = "intro"
+    st.session_state.lp_level = "beginner"
 
-def load_markdown(level: str):
-    path = LEARNING_DIR / f"{level}.md"
-    if path.exists():
-        return path.read_text(encoding="utf-8")
-    return "Content coming soon."
+def siemmy_reply(user_text: str) -> str:
+    text = user_text.lower().strip()
+
+    # Greeting handling
+    if text in ["hi", "hello", "hey", "hi siemmy", "hello siemmy"]:
+        return (
+            "Hey 👋 I’m **Siemmy**.\n\n"
+            "I can help you understand:\n"
+            "- 🛡️ SOC basics\n"
+            "- 📊 SIEM\n"
+            "- 🤖 SOAR & playbooks\n\n"
+            "What would you like to start with?"
+        )
+
+    # Fallback mentor response (safe + neutral)
+    return (
+        "Good question.\n\n"
+        "In SOC environments, automation exists to **support analysts — not replace judgment**.\n"
+        "SOAR helps reduce noise, enforce consistency, and speed up response while keeping humans in control.\n\n"
+        "Want me to explain this with an example?"
+    )
 
 # --------------------------------------------------
 # Header
@@ -39,71 +60,71 @@ col1, col2 = st.columns([8, 2])
 with col1:
     st.title("SOAR Learning Platform")
 with col2:
-    if st.button("🏠 Home"):
-        st.session_state.lp_state = "intro"
-        st.session_state.lp_level = None
-        st.session_state.siemmy_open = False
-        st.rerun()
+    st.button("🏠 Home", on_click=reset_home)
 
-st.divider()
+st.markdown("---")
 
 # --------------------------------------------------
-# INTRO PAGE
+# INTRO STATE
 # --------------------------------------------------
 if st.session_state.lp_state == "intro":
+    st.markdown(
+        """
+        ## How SOC teams think — not just what they automate
 
-    st.subheader("How SOC teams think — not just what they automate")
-    st.write(
-        "Learn **SOC, SIEM, and SOAR** the way analysts actually use them. "
-        "Choose your level and start learning with real workflows."
+        Learn **SOC, SIEM, and SOAR** the way analysts actually use them.
+        Choose your level and start learning with **real workflows**, not theory dumps.
+        """
     )
 
     st.markdown("### Select your current level")
 
-    level = st.radio(
-        label="",
-        options=["Beginner", "Intermediate", "Advanced"],
-        horizontal=True
-    )
+    st.session_state.lp_level = st.radio(
+        "",
+        ["Beginner", "Intermediate", "Advanced"],
+        index=["Beginner", "Intermediate", "Advanced"].index(
+            st.session_state.lp_level.capitalize()
+        )
+    ).lower()
 
     if st.button("Start Learning"):
-        st.session_state.lp_level = level.lower()
         st.session_state.lp_state = "learning"
-        st.rerun()
 
 # --------------------------------------------------
-# LEARNING PAGE
+# LEARNING STATE
 # --------------------------------------------------
 if st.session_state.lp_state == "learning":
-
     st.caption(f"Level: {st.session_state.lp_level.capitalize()}")
-    st.markdown("## Learning Content")
 
-    content = load_markdown(st.session_state.lp_level)
-    st.markdown(content)
+    st.markdown(
+        """
+        ### Learning Content
+        Content will expand here level-by-level.
+        """
+    )
 
 # --------------------------------------------------
-# FLOATING SIEMMY (Launcher Only)
+# SIEMMY FLOATING BUTTON
 # --------------------------------------------------
 st.markdown(
     """
     <style>
     .siemmy-btn {
         position: fixed;
-        bottom: 25px;
-        right: 25px;
-        z-index: 9999;
+        bottom: 24px;
+        right: 24px;
+        z-index: 1000;
     }
     .siemmy-box {
         position: fixed;
         bottom: 90px;
-        right: 25px;
-        width: 340px;
+        right: 24px;
+        width: 320px;
         background: white;
-        border-radius: 14px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        z-index: 9999;
+        border-radius: 12px;
+        box-shadow: 0 12px 30px rgba(0,0,0,0.2);
         padding: 16px;
+        z-index: 1000;
     }
     </style>
     """,
@@ -115,24 +136,29 @@ with st.container():
     st.markdown('<div class="siemmy-btn">', unsafe_allow_html=True)
     if st.button("👋 Siemmy"):
         st.session_state.siemmy_open = not st.session_state.siemmy_open
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # --------------------------------------------------
-# SIEMMY CHAT PANEL
+# SIEMMY CHAT (ONLY WHEN OPEN)
 # --------------------------------------------------
 if st.session_state.siemmy_open:
     st.markdown('<div class="siemmy-box">', unsafe_allow_html=True)
+
     st.markdown("### 👋 Hi, I’m **Siemmy**")
-    st.write("Want help understanding **SOC, SIEM, or SOAR**?")
-    st.caption("Ask anything — I’m here to guide you.")
+    st.caption("Ask me anything about SOC, SIEM, or SOAR.")
 
-    user_q = st.text_input("Ask Siemmy…", key="siemmy_input")
+    for msg in st.session_state.siemmy_messages:
+        st.markdown(msg)
 
-    if user_q:
-        st.markdown("**Siemmy:**")
-        st.write(
-            "Great question. In SOC environments, this exists because "
-            "automation supports analysts — it doesn’t replace judgment."
-        )
+    user_input = st.text_input(
+        "Ask Siemmy…",
+        key="siemmy_input"
+    )
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    if user_input:
+        st.session_state.siemmy_messages.append(f"**You:** {user_input}")
+        reply = siemmy_reply(user_input)
+        st.session_state.siemmy_messages.append(f"**Siemmy:** {reply}")
+        st.experimental_rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
