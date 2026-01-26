@@ -1,5 +1,6 @@
 import streamlit as st
 import streamlit.components.v1 as components
+from typing import Optional
 
 from core.playbook_engine import generate_playbook
 from core.diagram_engine import build_soar_mermaid
@@ -24,7 +25,27 @@ if "deployment_result" not in st.session_state:
 
 
 # -------------------------------------------------
-# Alert Input
+# Helper: Extract text from PDF
+# -------------------------------------------------
+def extract_text_from_pdf(uploaded_file) -> str:
+    try:
+        from PyPDF2 import PdfReader
+    except ImportError:
+        return ""
+
+    reader = PdfReader(uploaded_file)
+    text_chunks = []
+
+    for page in reader.pages:
+        page_text = page.extract_text()
+        if page_text:
+            text_chunks.append(page_text)
+
+    return "\n".join(text_chunks)
+
+
+# -------------------------------------------------
+# SIEM Alert Input
 # -------------------------------------------------
 st.subheader("SIEM Alert Input")
 
@@ -42,6 +63,18 @@ alert_text = st.text_area(
 
 
 # -------------------------------------------------
+# IRP Upload
+# -------------------------------------------------
+st.subheader("Incident Response Plan (Optional)")
+
+irp_file = st.file_uploader(
+    label="Upload IRP (PDF)",
+    type=["pdf"],
+    help="If provided, the SOAR playbook will be generated using your organization's IRP."
+)
+
+
+# -------------------------------------------------
 # Generate Button
 # -------------------------------------------------
 if st.button("Generate Deployment Playbook", type="primary"):
@@ -51,8 +84,24 @@ if st.button("Generate Deployment Playbook", type="primary"):
     else:
         with st.spinner("Generating SOAR deployment playbook..."):
 
+            irp_text: Optional[str] = None
+
+            if irp_file is not None:
+                irp_text = extract_text_from_pdf(irp_file)
+
+            # Combine alert + IRP context
+            combined_input = alert_text
+
+            if irp_text:
+                combined_input = (
+                    "SIEM ALERT:\n"
+                    f"{alert_text}\n\n"
+                    "INCIDENT RESPONSE PLAN (IRP):\n"
+                    f"{irp_text}"
+                )
+
             result = generate_playbook(
-                alert_text=alert_text,
+                alert_text=combined_input,
                 mode="Deployment",
                 depth="Deep"
             )
@@ -98,7 +147,7 @@ if st.session_state.deployment_result:
     </html>
     """
 
-    components.html(mermaid_html, height=600, scrolling=True)
+    components.html(mermaid_html, height=650, scrolling=True)
 
     st.markdown("---")
 
