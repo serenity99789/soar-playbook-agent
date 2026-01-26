@@ -10,6 +10,15 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
+# Session state
+# --------------------------------------------------
+if "learning_started" not in st.session_state:
+    st.session_state.learning_started = False
+
+if "lp_level" not in st.session_state:
+    st.session_state.lp_level = None
+
+# --------------------------------------------------
 # Helpers
 # --------------------------------------------------
 LEARNING_DIR = "learning"
@@ -22,14 +31,9 @@ LEVEL_FILE_MAP = {
 
 
 def load_markdown(level: str) -> str:
-    filename = LEVEL_FILE_MAP.get(level)
-    if not filename:
-        return "❌ Invalid learning level selected."
-
-    path = os.path.join(LEARNING_DIR, filename)
+    path = os.path.join(LEARNING_DIR, LEVEL_FILE_MAP[level])
     if not os.path.exists(path):
-        return f"❌ Learning content not found for **{level}**."
-
+        return "❌ Learning content not found."
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
 
@@ -39,14 +43,44 @@ def reset_learning():
     st.session_state.lp_level = None
 
 
-# --------------------------------------------------
-# Session state init
-# --------------------------------------------------
-if "learning_started" not in st.session_state:
-    st.session_state.learning_started = False
+def render_diagram(level: str):
+    if level == "beginner":
+        st.mermaid(
+            """
+            flowchart LR
+                A[SIEM Alert] --> B[Analyst Reviews Alert]
+                B --> C{Suspicious?}
+                C -- No --> D[Close Alert]
+                C -- Yes --> E[Investigate]
+                E --> F[Incident Response]
+            """
+        )
 
-if "lp_level" not in st.session_state:
-    st.session_state.lp_level = None
+    elif level == "intermediate":
+        st.mermaid(
+            """
+            flowchart LR
+                A[Alert Trigger] --> B[Context Enrichment]
+                B --> C{Confidence High?}
+                C -- Yes --> D[Automated Action]
+                C -- No --> E[Human Review]
+                E --> D
+                D --> F[Update Case]
+            """
+        )
+
+    elif level == "advanced":
+        st.mermaid(
+            """
+            flowchart LR
+                A[Playbook Change] --> B[Peer Review]
+                B --> C{Approved?}
+                C -- No --> D[Rework]
+                C -- Yes --> E[Deploy to Prod]
+                E --> F[Monitor & Audit]
+            """
+        )
+
 
 # --------------------------------------------------
 # Top navigation
@@ -94,11 +128,17 @@ else:
     level = st.session_state.lp_level
 
     st.markdown(f"# {level.capitalize()} Level")
-    st.caption("You can change levels anytime using the Home button.")
+    st.caption("Visual workflow + structured learning content")
     st.markdown("---")
 
-    content = load_markdown(level)
-    st.markdown(content, unsafe_allow_html=True)
+    left, right = st.columns([3, 2])
+
+    with left:
+        st.markdown(load_markdown(level), unsafe_allow_html=True)
+
+    with right:
+        st.subheader("Workflow Diagram")
+        render_diagram(level)
 
     st.markdown("---")
 
