@@ -23,31 +23,41 @@ if "deployment_result" not in st.session_state:
 
 
 # -------------------------------------------------
-# Demo Alert (Deterministic for Leadership Demo)
+# Alert Input
 # -------------------------------------------------
-DEMO_ALERT_TEXT = """
-Multiple One-Time Password (OTP) messages were detected being sent to a user’s
-registered mobile number from unknown sources within a short time window.
-The activity is associated with repeated DigiLocker login attempts and may
-indicate brute-force authentication attempts, SMS spoofing, or SIM swap activity.
-"""
+st.subheader("SIEM Alert Input")
+
+alert_text = st.text_area(
+    label="Paste the SIEM alert / incident description",
+    height=180,
+    value=(
+        "Multiple One-Time Password (OTP) messages were detected being sent to a user's "
+        "registered mobile number from unknown sources within a short time window. "
+        "The activity is associated with repeated DigiLocker login attempts and may "
+        "indicate brute-force authentication attempts, SMS spoofing, or SIM swap activity."
+    )
+)
 
 
 # -------------------------------------------------
 # Generate Button
 # -------------------------------------------------
 if st.button("Generate Deployment Playbook", type="primary"):
-    with st.spinner("Generating SOAR deployment playbook..."):
 
-        result = generate_playbook(
-            alert_text=DEMO_ALERT_TEXT,
-            mode="Deployment",
-            depth="Deep"
-        )
+    if not alert_text.strip():
+        st.warning("Please provide a SIEM alert before generating the playbook.")
+    else:
+        with st.spinner("Generating SOAR deployment playbook..."):
 
-        st.session_state.deployment_result = result
+            result = generate_playbook(
+                alert_text=alert_text,
+                mode="Deployment",
+                depth="Deep"
+            )
 
-    st.success("Deployment playbook generated")
+            st.session_state.deployment_result = result
+
+        st.success("Deployment playbook generated")
 
 
 # -------------------------------------------------
