@@ -1,21 +1,18 @@
 import streamlit as st
 
-# --------------------------------------------------
+# ---------------------------
 # Page Config
-# --------------------------------------------------
+# ---------------------------
 st.set_page_config(
     page_title="SOAR Learning Platform",
     layout="wide"
 )
 
-# --------------------------------------------------
-# Session State Init (SAFE)
-# --------------------------------------------------
-if "lp_state" not in st.session_state:
-    st.session_state.lp_state = "intro"
-
-if "lp_level" not in st.session_state or st.session_state.lp_level is None:
-    st.session_state.lp_level = "beginner"
+# ---------------------------
+# Session State Init
+# ---------------------------
+if "lp_level" not in st.session_state:
+    st.session_state.lp_level = None
 
 if "siemmy_open" not in st.session_state:
     st.session_state.siemmy_open = False
@@ -23,103 +20,65 @@ if "siemmy_open" not in st.session_state:
 if "siemmy_messages" not in st.session_state:
     st.session_state.siemmy_messages = []
 
-# --------------------------------------------------
-# Helpers
-# --------------------------------------------------
-def reset_home():
-    st.session_state.lp_state = "intro"
-    st.session_state.lp_level = "beginner"
-    st.session_state.siemmy_open = False
-    st.session_state.siemmy_messages = []
-
-def safe_level_label():
-    level = st.session_state.lp_level
-    if not isinstance(level, str):
-        return "Beginner"
-    return level.capitalize()
-
-def siemmy_reply(user_text: str) -> str:
-    text = user_text.lower().strip()
-
-    if text in ["hi", "hello", "hey", "hi siemmy", "hello siemmy"]:
-        return (
-            "Hey 👋 I’m **Siemmy**.\n\n"
-            "I can help you learn:\n"
-            "- 🛡️ SOC fundamentals\n"
-            "- 📊 SIEM concepts\n"
-            "- 🤖 SOAR playbooks\n\n"
-            "What would you like to start with?"
-        )
-
-    return (
-        "That’s a good question.\n\n"
-        "In real SOCs, automation exists to **assist analysts**, not replace them.\n"
-        "SOAR reduces noise, enforces consistency, and speeds response — while humans stay in control.\n\n"
-        "Want a simple real-world example?"
-    )
-
-# --------------------------------------------------
-# Header
-# --------------------------------------------------
-col1, col2 = st.columns([8, 2])
-with col1:
-    st.title("SOAR Learning Platform")
+# ---------------------------
+# Home Button
+# ---------------------------
+col1, col2 = st.columns([6, 1])
 with col2:
-    st.button("🏠 Home", on_click=reset_home)
+    if st.button("🏠 Home"):
+        st.session_state.lp_level = None
+        st.session_state.siemmy_messages = []
+        st.session_state.siemmy_open = False
+        st.experimental_rerun()
 
+# ---------------------------
+# Hero Section
+# ---------------------------
+st.title("SOAR Learning Platform")
 st.markdown("---")
 
-# --------------------------------------------------
-# INTRO STATE
-# --------------------------------------------------
-if st.session_state.lp_state == "intro":
-    st.markdown(
-        """
-        ## How SOC teams think — not just what they automate
+st.markdown(
+    """
+    ## How SOC teams think — not just what they automate  
+    Learn **SOC, SIEM, and SOAR** the way analysts actually use them.  
+    Choose your level and start learning with real workflows.
+    """
+)
 
-        Learn **SOC, SIEM, and SOAR** the way analysts actually use them.
-        Choose your level and start learning with **real workflows**, not theory dumps.
-        """
-    )
+# ---------------------------
+# Level Selection
+# ---------------------------
+st.markdown("### Select your current level")
 
-    st.markdown("### Select your current level")
+level = st.radio(
+    "",
+    ["Beginner", "Intermediate", "Advanced"],
+    index=0,
+    horizontal=True
+)
 
-    level_choice = st.radio(
-        "",
-        ["Beginner", "Intermediate", "Advanced"],
-        index=0
-    )
+if st.button("Start Learning"):
+    st.session_state.lp_level = level.lower()
+    st.success(f"Level set to **{level}**")
 
-    st.session_state.lp_level = level_choice.lower()
-
-    if st.button("Start Learning"):
-        st.session_state.lp_state = "learning"
-
-# --------------------------------------------------
-# LEARNING STATE
-# --------------------------------------------------
-if st.session_state.lp_state == "learning":
-    st.caption(f"Level: {safe_level_label()}")
-
-    st.markdown(
-        """
-        ### Learning Content
-        This section will expand with structured lessons,
-        diagrams, and explanations based on your level.
-        """
-    )
-
-# --------------------------------------------------
-# Floating Siemmy Styles
-# --------------------------------------------------
+# ---------------------------
+# Floating Siemmy Button
+# ---------------------------
 st.markdown(
     """
     <style>
-    .siemmy-btn {
+    .siemmy-button {
         position: fixed;
         bottom: 24px;
         right: 24px;
+        background-color: #ff4b4b;
+        color: white;
+        padding: 12px 18px;
+        border-radius: 999px;
+        font-weight: 600;
+        cursor: pointer;
         z-index: 1000;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.2);
     }
     .siemmy-box {
         position: fixed;
@@ -127,43 +86,62 @@ st.markdown(
         right: 24px;
         width: 320px;
         background: white;
-        border-radius: 12px;
-        box-shadow: 0 12px 30px rgba(0,0,0,0.2);
+        border-radius: 14px;
         padding: 16px;
         z-index: 1000;
+        box-shadow: 0 12px 30px rgba(0,0,0,0.25);
     }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# --------------------------------------------------
-# Floating Button
-# --------------------------------------------------
-st.markdown('<div class="siemmy-btn">', unsafe_allow_html=True)
-if st.button("👋 Siemmy"):
+# Toggle button
+if st.button("👋 Siemmy", key="siemmy_toggle"):
     st.session_state.siemmy_open = not st.session_state.siemmy_open
-st.markdown("</div>", unsafe_allow_html=True)
 
-# --------------------------------------------------
-# Siemmy Chat (ONLY ONE INSTANCE)
-# --------------------------------------------------
+# ---------------------------
+# Floating Siemmy Chat
+# ---------------------------
 if st.session_state.siemmy_open:
-    st.markdown('<div class="siemmy-box">', unsafe_allow_html=True)
-
-    st.markdown("### 👋 Hi, I’m **Siemmy**")
-    st.caption("Your SOC learning mentor")
-
-    for msg in st.session_state.siemmy_messages:
-        st.markdown(msg)
-
-    user_input = st.text_input("Ask Siemmy…")
-
-    if user_input:
-        st.session_state.siemmy_messages.append(f"**You:** {user_input}")
-        st.session_state.siemmy_messages.append(
-            f"**Siemmy:** {siemmy_reply(user_input)}"
+    with st.container():
+        st.markdown(
+            """
+            <div class="siemmy-box">
+                <strong>👋 Hi, I’m Siemmy</strong><br>
+                <small>Your SOC learning mentor</small>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
-        st.experimental_rerun()
 
-    st.markdown("</div>", unsafe_allow_html=True)
+        user_input = st.text_input(
+            "Ask Siemmy…",
+            key="siemmy_input"
+        )
+
+        if user_input:
+            # Greeting logic
+            msg = user_input.strip().lower()
+
+            if msg in ["hi", "hello", "hey"]:
+                response = (
+                    "Hey! 👋 I’m Siemmy.\n\n"
+                    "I can help you understand **SOC**, **SIEM**, and **SOAR**.\n"
+                    "Ask me anything, or start learning by choosing a level above."
+                )
+            else:
+                response = (
+                    "Good question. In SOC environments, automation exists to **support analysts**, "
+                    "not replace judgment. Want me to explain this with a real example?"
+                )
+
+            st.session_state.siemmy_messages.append(
+                ("You", user_input)
+            )
+            st.session_state.siemmy_messages.append(
+                ("Siemmy", response)
+            )
+
+        for speaker, text in st.session_state.siemmy_messages[-6:]:
+            st.markdown(f"**{speaker}:** {text}")
