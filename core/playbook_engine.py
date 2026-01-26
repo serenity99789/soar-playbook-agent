@@ -1,7 +1,7 @@
 import os
 import json
 from pathlib import Path
-from google import genai
+from groq import Groq
 
 # -------------------------------------------------
 # CONFIG
@@ -14,73 +14,86 @@ REFERENCE_FILES = [
     "reference_sources.txt",
 ]
 
-API_KEY = os.getenv("GEMINI_API_KEY")
-if not API_KEY:
-    raise RuntimeError("GEMINI_API_KEY not set")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    raise RuntimeError("GROQ_API_KEY not set")
 
-client = genai.Client(api_key=API_KEY)
+client = Groq(api_key=GROQ_API_KEY)
 
 # -------------------------------------------------
-# LOAD REFERENCE MATERIAL
+# LOAD + LIMIT REFERENCE MATERIAL
 # -------------------------------------------------
-def load_reference_material():
-    material = []
+def load_reference_material(max_chars: int = 6000) -> str:
+    """
+    Load SOC / SOAR reference material with a hard safety limit.
+    """
+    content = []
+
     for name in REFERENCE_FILES:
         path = BASE_DIR / name
         if path.exists():
-            material.append(f"\n--- {name} ---\n")
-            material.append(path.read_text(encoding="utf-8"))
-    return "\n".join(material)
+            content.append(f"\n--- {name} ---\n")
+            content.append(path.read_text(encoding="utf-8"))
+
+    joined = "\n".join(content)
+
+    if len(joined) > max_chars:
+        joined = joined[:max_chars] + "\n\n[TRUNCATED FOR SAFETY]"
+
+    return joined
+
 
 REFERENCE_CONTEXT = load_reference_material()
 
 # -------------------------------------------------
-# REAL SOAR AGENT (SDK-CORRECT)
+# DYNAMIC SOAR AGENT (LLM-DRIVEN, NOT TEMPLATE)
 # -------------------------------------------------
-def generate_playbook(alert_text: str, mode: str, depth: str):
+def generate_playbook(alert_text: str, mode: str, depth: str) -> dict:
     """
-    Generates a real SOAR playbook using Gemini reasoning.
+    Dynamic SOAR reasoning engine.
+    LLM decides the flow, engine enforces structure.
     """
 
-    prompt = f"""
-You are a SENIOR SOC SOAR ARCHITECT designing production-grade SOAR playbooks.
+    system_prompt = f"""
+You are a SENIOR ENTERPRISE SOAR ARCHITECT.
+
+Your job is to ANALYZE security incidents and DESIGN
+SAFE, REALISTIC, ENTERPRISE-GRADE SOAR EXECUTION PLANS.
 
 You MUST:
-- Think like an enterprise SOC
-- Apply SIEM, EDR, IAM, DFIR principles
-- Avoid unsafe automation
-- Explicitly define decision points
+- Think like a SOC analyst (L1 → L3)
+- Apply SIEM, EDR, IAM, DFIR reasoning
+- Avoid unsafe or irreversible automation
+- Introduce decision points where risk exists
+- Preserve evidence BEFORE containment
 - Clearly separate automated vs human actions
 
-REFERENCE MATERIAL (MANDATORY):
+REFERENCE MATERIAL:
 {REFERENCE_CONTEXT}
 
+OUTPUT RULES:
+- RETURN ONLY VALID JSON
+- NO markdown
+- NO explanations
+- NO filler text
+"""
+
+    user_prompt = f"""
 ALERT INPUT:
 {alert_text}
 
 MODE:
 {mode}
 
-LEARNING DEPTH:
+DEPTH:
 {depth}
 
 TASK:
-Analyze the alert and design a SOAR playbook.
+Dynamically reason about this alert and produce a SOAR execution plan.
 
-You MUST determine:
-1. Alert category
-2. Investigations required
-3. Threat confidence
-4. Safe automation actions
-5. Human approval checkpoints
-6. Evidence preservation steps
-7. Escalation logic
+The plan MUST be scenario-specific and technically accurate.
 
-RETURN ONLY VALID JSON.
-NO markdown.
-NO commentary.
-
-JSON SCHEMA:
+JSON SCHEMA (STRICT):
 {{
   "alert_type": "",
   "threat_confidence": "Low | Medium | High",
@@ -110,14 +123,23 @@ JSON SCHEMA:
 }}
 """
 
-    response = client.models.generate_content(
-        model="models/gemini-2.5-flash",
-        contents=prompt,
-    )
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.1-70b-versatile",
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+    except Exception as e:
+        raise RuntimeError(f"Groq request failed: {e}")
+
+    raw_output = response.choices[0].message.content.strip()
 
     try:
-        return json.loads(response.text)
+        return json.loads(raw_output)
     except Exception:
         raise ValueError(
-            "Gemini returned invalid JSON.\n\nRAW OUTPUT:\n" + response.text
+            "LLM returned invalid JSON.\n\nRAW OUTPUT:\n" + raw_output
         )
