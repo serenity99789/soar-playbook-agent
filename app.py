@@ -45,7 +45,7 @@ client = genai.Client(api_key=API_KEY)
 # -------------------------------------------------
 def build_playbook_prompt(text):
     return f"""
-You are a senior SOAR engineer designing a SOC playbook.
+You are a senior SOAR engineer and SOC architect.
 
 Return ONLY valid JSON.
 No markdown. No explanation text.
@@ -63,7 +63,11 @@ Schema:
       "analyst_notes": "",
       "learning_explanation": "",
       "soc_role": "",
-      "skip_impact": ""
+      "skip_impact": "",
+      "siem_detection": "",
+      "log_sources": [],
+      "mitre_technique": "",
+      "automation_level": ""
     }}
   ]
 }}
@@ -213,19 +217,11 @@ input_text = ""
 if mode == "IRP (Document Upload)":
     file = st.file_uploader("Upload IRP", type=["pdf", "docx", "txt"])
     if file:
-        with st.spinner("Reading IRP..."):
-            raw = (
-                extract_text_from_pdf(file)
-                if file.type == "application/pdf"
-                else extract_text_from_docx(file)
-                if file.type.endswith("document")
-                else extract_text_from_txt(file)
-            )
-        with st.spinner("Extracting actionable steps..."):
-            st.session_state.irp_summary = client.models.generate_content(
-                model="models/gemini-2.5-flash",
-                contents=build_irp_extraction_prompt(raw)
-            ).text
+        raw = extract_text_from_pdf(file) if file.type == "application/pdf" else extract_text_from_docx(file)
+        st.session_state.irp_summary = client.models.generate_content(
+            model="models/gemini-2.5-flash",
+            contents=build_irp_extraction_prompt(raw)
+        ).text
         with st.expander("Extracted IRP Summary", expanded=True):
             st.markdown(st.session_state.irp_summary)
         input_text = st.session_state.irp_summary
@@ -236,20 +232,15 @@ else:
 # GENERATE
 # -------------------------------------------------
 if st.button("Generate Playbook"):
-    with st.spinner("Generating playbook..."):
-        response = client.models.generate_content(
-            model="models/gemini-2.5-flash",
-            contents=build_playbook_prompt(input_text)
-        )
-
-    try:
-        data = extract_json_safely(response.text)
-        st.session_state.blocks = data["blocks"]
-        st.session_state.diagram_code = generate_mermaid(data["blocks"])
-        st.session_state.documentation = build_documentation(data["blocks"])
-        st.session_state.generated = True
-    except:
-        st.error("Model output could not be parsed. Try again.")
+    response = client.models.generate_content(
+        model="models/gemini-2.5-flash",
+        contents=build_playbook_prompt(input_text)
+    )
+    data = extract_json_safely(response.text)
+    st.session_state.blocks = data["blocks"]
+    st.session_state.diagram_code = generate_mermaid(data["blocks"])
+    st.session_state.documentation = build_documentation(data["blocks"])
+    st.session_state.generated = True
 
 # -------------------------------------------------
 # OUTPUT
@@ -261,10 +252,15 @@ if st.session_state.generated:
         st.header("📘 Block-Level Learning")
         for i, b in enumerate(st.session_state.blocks, 1):
             with st.expander(f"Step {i}: {b['block_name']}"):
-                st.markdown(f"**Why this step exists:** {b.get('learning_explanation', 'This step provides necessary context and decision support in the SOAR workflow.')}")
-                st.markdown(f"**SOC Role Involved:** {b.get('soc_role', 'Typically handled by L1/L2 analysts depending on automation maturity.')}")
-                st.markdown(f"**If skipped:** {b.get('skip_impact', 'Skipping this step may reduce confidence, increase false positives, or delay response.')}")
-
+                st.markdown(f"**Why this step exists:** {b.get('learning_explanation','')}")
+                st.markdown(f"**SOC Role:** {b.get('soc_role','')}")
+                st.markdown(f"**If skipped:** {b.get('skip_impact','')}")
+                st.markdown("---")
+                st.markdown("🔎 **SIEM → SOAR Mapping**")
+                st.markdown(f"- **Detection Type:** {b.get('siem_detection','')}")
+                st.markdown(f"- **Log Sources:** {', '.join(b.get('log_sources', []))}")
+                st.markdown(f"- **MITRE Technique:** {b.get('mitre_technique','')}")
+                st.markdown(f"- **Automation Level:** {b.get('automation_level','')}")
 
     st.header("SOAR Workflow")
     render_mermaid(st.session_state.diagram_code)
