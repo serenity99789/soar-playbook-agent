@@ -10,8 +10,14 @@ st.set_page_config(
 )
 
 # --------------------------------
-# Session state
+# Session state init
 # --------------------------------
+if "current_view" not in st.session_state:
+    st.session_state.current_view = "home"
+
+if "selected_level" not in st.session_state:
+    st.session_state.selected_level = "Beginner"
+
 if "show_siemmy" not in st.session_state:
     st.session_state.show_siemmy = False
 
@@ -23,23 +29,41 @@ with col1:
     st.title("SOAR Learning Platform")
 with col2:
     if st.button("🏠 Home"):
-        st.experimental_rerun()
+        st.session_state.current_view = "home"
+        st.session_state.show_siemmy = False
 
 st.divider()
 
-# --------------------------------
-# Layout
-# --------------------------------
-left, right = st.columns([2, 1])
+# =========================================================
+# HOME VIEW — LEVEL SELECTION
+# =========================================================
+if st.session_state.current_view == "home":
+    st.header("Select your current level")
 
-# --------------------------------
-# LEFT: Learning Content
-# --------------------------------
-with left:
-    st.header("Beginner Level — Learning Content")
+    st.radio(
+        "",
+        ["Beginner", "Intermediate", "Advanced"],
+        key="selected_level"
+    )
 
-    st.subheader("SOC Foundations")
-    st.markdown("""
+    if st.button("Start Learning"):
+        st.session_state.current_view = "learning"
+
+# =========================================================
+# LEARNING VIEW
+# =========================================================
+if st.session_state.current_view == "learning":
+
+    left, right = st.columns([2, 1])
+
+    # --------------------------------
+    # LEFT: Learning Content
+    # --------------------------------
+    with left:
+        st.header(f"{st.session_state.selected_level} Level — Learning Content")
+
+        st.subheader("SOC Foundations")
+        st.markdown("""
 **What you’ll learn:**
 - What a SOC actually does  
 - SOC analyst day-to-day work  
@@ -49,80 +73,67 @@ with left:
 - Why humans still matter in security  
 """)
 
-    st.divider()
+        st.divider()
 
-    st.markdown("""
+        st.markdown("""
 ### 1. What is a SOC?
-A Security Operations Center (SOC) is responsible for monitoring, detecting,
-investigating, and responding to security threats across an organization.
+A Security Operations Center (SOC) monitors, detects, investigates,
+and responds to security threats.
 
 ### 2. SOC Analyst Day-to-Day
-Analysts review alerts, enrich context, validate threats, escalate incidents,
+Review alerts, enrich context, validate threats, escalate incidents,
 and document actions.
 
 ### 3. What is SIEM?
-SIEM collects logs, correlates events, and raises alerts — **it does not respond**.
+SIEM collects and correlates logs — it **does not respond**.
 
 ### 4. What is SOAR?
-SOAR automates investigation and response **after** an alert exists.
+SOAR automates investigation and response **after detection**.
 
 ### 5. Alert → Incident Lifecycle
-Not every alert becomes an incident. Human judgment decides.
+Not every alert becomes an incident. Humans decide.
 
 ### 6. Why Humans Still Matter
-Automation supports analysts — it never replaces accountability.
+Automation supports analysts — accountability stays human.
 """)
 
-# --------------------------------
-# RIGHT: Workflow Diagram
-# --------------------------------
-with right:
-    st.subheader("Workflow Diagram")
+    # --------------------------------
+    # RIGHT: Workflow Diagram
+    # --------------------------------
+    with right:
+        st.subheader("Workflow Diagram")
 
-    mermaid_code = """
-    graph LR
-        A[Alert Trigger] --> B[Initial Triage]
-        B --> C[Basic Enrichment]
-        C --> D{Confidence High?}
-        D -- No --> E[Human Review]
-        D -- Yes --> F[Automated Action]
-        E --> F
-        F --> G[Update Case]
-    """
+        mermaid_code = """
+        graph LR
+            A[Alert Trigger] --> B[Initial Triage]
+            B --> C[Basic Enrichment]
+            C --> D{Confidence High?}
+            D -- No --> E[Human Review]
+            D -- Yes --> F[Automated Action]
+            E --> F
+            F --> G[Update Case]
+        """
 
-    components.html(
-        f"""
-        <div style="background:#f8f9fa;padding:12px;border-radius:8px;">
-            <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-            <div class="mermaid">
-            {mermaid_code}
+        components.html(
+            f"""
+            <div style="background:#f8f9fa;padding:12px;border-radius:8px;">
+                <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+                <div class="mermaid">
+                {mermaid_code}
+                </div>
+                <script>
+                    mermaid.initialize({{ startOnLoad: true, theme: "default" }});
+                </script>
             </div>
-            <script>
-                mermaid.initialize({{ startOnLoad: true, theme: "default" }});
-            </script>
-        </div>
-        """,
-        height=320
-    )
+            """,
+            height=320
+        )
 
 # --------------------------------
 # SIEMMY (Floating Mentor)
 # --------------------------------
 st.markdown("""
 <style>
-#siemmy-btn {
-    position: fixed;
-    bottom: 24px;
-    right: 24px;
-    background: #ff4b4b;
-    color: white;
-    border-radius: 999px;
-    padding: 12px 18px;
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: 0 6px 16px rgba(0,0,0,0.2);
-    z-index: 9999;
-}
 #siemmy-box {
     position: fixed;
     bottom: 90px;
@@ -137,11 +148,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Toggle button
-if st.button("👋 Siemmy", key="siemmy_toggle"):
+if st.button("👋 Siemmy"):
     st.session_state.show_siemmy = not st.session_state.show_siemmy
 
-# Siemmy box
 if st.session_state.show_siemmy:
     st.markdown("""
     <div id="siemmy-box">
