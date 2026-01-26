@@ -1,115 +1,133 @@
 import streamlit as st
 
-# -------------------------------------------------
+# -----------------------------
 # Page config
-# -------------------------------------------------
-st.set_page_config(
-    page_title="SOAR Learning Platform",
-    layout="wide",
-)
+# -----------------------------
+st.set_page_config(page_title="SOAR Learning Platform", layout="wide")
 
-# -------------------------------------------------
+# -----------------------------
 # Session state init
-# -------------------------------------------------
-if "selected_level" not in st.session_state:
-    st.session_state.selected_level = None
+# -----------------------------
+if "lp_level" not in st.session_state:
+    st.session_state.lp_level = None
 
-# -------------------------------------------------
-# Learning content (LEVEL-SPECIFIC)
-# -------------------------------------------------
-LEARNING_CONTENT = {
-    "Beginner": {
-        "title": "Beginner Level — SOC Foundations",
-        "sections": [
-            ("What is a SOC?", "A Security Operations Center (SOC) monitors, detects, and responds to security threats across an organization."),
-            ("SOC Analyst Day-to-Day", "SOC analysts review alerts, investigate incidents, escalate threats, and document findings."),
-            ("What is SIEM?", "SIEM aggregates logs and generates alerts based on correlation and detection rules."),
-            ("What is SOAR?", "SOAR automates repetitive SOC tasks and orchestrates response workflows."),
-            ("Alert → Incident lifecycle", "Alerts are triaged, investigated, classified, and either closed or escalated."),
-            ("Why humans still matter", "Automation assists analysts, but judgment and context come from humans."),
-        ],
-    },
-    "Intermediate": {
-        "title": "Intermediate Level — SOC Workflows & Automation",
-        "sections": [
-            ("SOC Investigation Flow", "Learn how alerts move through enrichment, validation, and response."),
-            ("Enrichment & Context", "Threat intel, asset context, and user behavior improve decisions."),
-            ("SOAR Playbooks", "Playbooks define structured, repeatable response actions."),
-            ("Human vs Automated Decisions", "Not all actions should be automated."),
-            ("False Positives", "Reducing noise is critical to SOC efficiency."),
-            ("Metrics that matter", "MTTD, MTTR, alert volume, and escalation rates."),
-        ],
-    },
-    "Advanced": {
-        "title": "Advanced Level — Detection Engineering & SOAR Design",
-        "sections": [
-            ("Detection Engineering", "Design high-fidelity detections aligned to threat models."),
-            ("Threat Modeling", "Map detections to attacker behavior and kill chains."),
-            ("SOAR Architecture", "Design scalable and resilient automation systems."),
-            ("Playbook Governance", "Versioning, approvals, and auditability."),
-            ("Failure Handling", "Design for automation failures and edge cases."),
-            ("Measuring Automation ROI", "Quantify time saved and risk reduced."),
-        ],
-    },
-}
+if "lp_started" not in st.session_state:
+    st.session_state.lp_started = False
 
-# -------------------------------------------------
+
+# -----------------------------
+# Helper: reset to home
+# -----------------------------
+def go_home():
+    st.session_state.lp_level = None
+    st.session_state.lp_started = False
+
+
+# -----------------------------
 # Header
-# -------------------------------------------------
-col_title, col_home = st.columns([6, 1])
-with col_title:
+# -----------------------------
+col1, col2 = st.columns([6, 1])
+with col1:
     st.title("SOAR Learning Platform")
-with col_home:
-    st.page_link("app.py", label="🏠 Home")  # ✅ FIXED
+with col2:
+    st.button("🏠 Home", on_click=go_home)
 
 st.divider()
 
-# -------------------------------------------------
-# Level selection
-# -------------------------------------------------
-if st.session_state.selected_level is None:
+
+# -----------------------------
+# HOME / LEVEL SELECTION
+# -----------------------------
+if not st.session_state.lp_started:
+
     st.subheader("Select your current level")
 
     level = st.radio(
-        "",
-        ["Beginner", "Intermediate", "Advanced"],
-        horizontal=False,
+        label="",
+        options=["Beginner", "Intermediate", "Advanced"],
+        index=0,
+        horizontal=False
     )
 
     if st.button("Start Learning"):
-        st.session_state.selected_level = level
-        st.rerun()
+        st.session_state.lp_level = level
+        st.session_state.lp_started = True
 
     st.stop()
 
-# -------------------------------------------------
-# Render selected level
-# -------------------------------------------------
-level = st.session_state.selected_level
-content = LEARNING_CONTENT[level]
+
+# -----------------------------
+# LEARNING CONTENT
+# -----------------------------
+level = st.session_state.lp_level
 
 left, right = st.columns([2, 1])
 
 with left:
-    st.subheader(f"{level} Level — Learning Path")
-    st.markdown("### Progress Tracker")
+    st.header(f"{level} Level — Learning Content")
 
-    total = len(content["sections"])
-    completed = total
+    if level == "Beginner":
+        st.markdown("""
+### SOC Foundations
 
-    for title, _ in content["sections"]:
-        st.checkbox(title, value=True, disabled=True)
+**What you’ll learn:**
+- What a SOC actually does
+- SOC analyst day-to-day work
+- What SIEM means in real operations
+- What SOAR automates (and what it doesn’t)
+- How alerts become incidents
+- Why humans still matter in security
 
-    st.progress(completed / total)
-    st.caption(f"Progress: {completed} / {total} sections completed")
+---
 
-    st.divider()
+### 1. What is a SOC?
+A Security Operations Center (SOC) is responsible for monitoring, detecting, investigating, and responding to security threats.
 
-    st.subheader(content["title"])
+### 2. SOC Analyst Day-to-Day
+Analysts review alerts, validate threats, escalate incidents, and document actions.
 
-    for idx, (title, body) in enumerate(content["sections"], start=1):
-        with st.expander(f"{idx}. {title}"):
-            st.write(body)
+### 3. What is SIEM?
+SIEM aggregates logs, correlates events, and raises alerts.
+
+### 4. What is SOAR?
+SOAR automates repetitive steps **after** an alert exists.
+
+### 5. Alert → Incident Lifecycle
+Not every alert is an incident. Triage decides.
+
+### 6. Why Humans Still Matter
+Automation supports analysts — it does not replace judgment.
+        """)
+
+    elif level == "Intermediate":
+        st.markdown("""
+### SOC Workflows & Automation
+
+**Focus:**
+- Investigation flow
+- Decision points
+- Automation boundaries
+
+---
+
+- Alert ingestion
+- Context enrichment
+- Confidence scoring
+- Human review vs automation
+- Case updates
+        """)
+
+    elif level == "Advanced":
+        st.markdown("""
+### Advanced SOC & SOAR Design
+
+**Focus:**
+- Playbook architecture
+- Failure handling
+- Governance
+- Metrics & tuning
+- IRP → SOAR translation
+        """)
 
 with right:
     st.subheader("Workflow Diagram")
