@@ -1,8 +1,11 @@
 import streamlit as st
-import textwrap
-import uuid
+import streamlit.components.v1 as components
+from core.playbook_engine import generate_playbook
+from core.diagram_engine import generate_soar_mermaid
 
-# ---------------- Page Config ----------------
+# -------------------------------------------------
+# PAGE CONFIG
+# -------------------------------------------------
 st.set_page_config(
     page_title="SOAR Deployment Playbook",
     page_icon="🚀",
@@ -10,22 +13,93 @@ st.set_page_config(
 )
 
 st.title("🚀 SOAR Deployment Playbook")
-st.caption("Production-grade SOAR execution flow driven by the alert use-case")
+st.caption("Production-grade SOAR execution flow")
 
-# ---------------- Input ----------------
-st.subheader("SIEM Alert / Use Case Input")
+# -------------------------------------------------
+# SESSION STATE
+# -------------------------------------------------
+if "deployment_result" not in st.session_state:
+    st.session_state.deployment_result = None
 
-alert_text = st.text_area(
-    "Describe the alert that triggered SOAR",
-    placeholder="Example: Suspicious PowerShell execution detected on endpoint with outbound C2 communication...",
-    height=140
+if "deployment_mermaid" not in st.session_state:
+    st.session_state.deployment_mermaid = None
+
+# -------------------------------------------------
+# INPUT SECTION
+# -------------------------------------------------
+st.subheader("Describe the SIEM alert")
+
+use_case = st.text_area(
+    "Deployment use case",
+    placeholder=(
+        "Example:\n"
+        "Multiple failed authentication attempts detected from a single external IP.\n"
+        "Followed by a successful login to a privileged account."
+    ),
+    height=160
 )
 
-generate = st.button("Generate Deployment Playbook")
+col1, col2 = st.columns([1, 3])
 
-# ---------------- Mermaid Renderer ----------------
-def render_mermaid(code: str, height: int = 900):
-    st.components.v1.html(
+with col1:
+    generate_btn = st.button("Generate Deployment Playbook", use_container_width=True)
+
+with col2:
+    st.markdown(
+        "This view shows **how SOAR executes safely in production**, "
+        "including governance, conditional automation, and human checkpoints."
+    )
+
+# -------------------------------------------------
+# GENERATION
+# -------------------------------------------------
+if generate_btn:
+    if not use_case.strip():
+        st.warning("Please provide a SIEM alert description.")
+    else:
+        with st.spinner("Analyzing alert and building deployment playbook..."):
+            result = generate_playbook(
+                alert_text=use_case,
+                mode="deployment",
+                depth="Advanced"
+            )
+
+            mermaid_code = generate_soar_mermaid(result)
+
+            st.session_state.deployment_result = result
+            st.session_state.deployment_mermaid = mermaid_code
+
+        st.success("Deployment playbook generated")
+
+# -------------------------------------------------
+# OUTPUT SECTION
+# -------------------------------------------------
+if st.session_state.deployment_result:
+
+    result = st.session_state.deployment_result
+
+    # -----------------------------
+    # DEPLOYMENT STEPS
+    # -----------------------------
+    st.divider()
+    st.header("📋 Deployment Steps")
+
+    for i, block in enumerate(result["blocks"], 1):
+        with st.expander(f"Step {i}: {block['name']}"):
+            st.markdown(f"**Category:** {block['category']}")
+            st.markdown(f"**Purpose:** {block['purpose']}")
+            st.markdown(f"**Automation Level:** {block['automation_level']}")
+            st.markdown(f"**Failure Impact:** {block['failure_impact']}")
+
+    # -----------------------------
+    # SOAR EXECUTION FLOW
+    # -----------------------------
+    st.divider()
+    st.header("🧭 SOAR Execution Flow")
+
+    mermaid = st.session_state.deployment_mermaid
+
+    components.html(
         f"""
         <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
         <script>
@@ -33,125 +107,50 @@ def render_mermaid(code: str, height: int = 900):
                 startOnLoad: true,
                 theme: "dark",
                 flowchart: {{
-                    useMaxWidth: false,
-                    htmlLabels: true,
-                    curve: "basis"
+                    curve: "basis",
+                    nodeSpacing: 40,
+                    rankSpacing: 70,
+                    padding: 10
                 }}
             }});
         </script>
-
-        <div style="overflow-x:auto; padding:20px;">
-            <pre class="mermaid">
-{code}
-            </pre>
+        <div class="mermaid" style="overflow-x:auto; padding:20px;">
+        {mermaid}
         </div>
         """,
-        height=height,
+        height=600,
         scrolling=True
     )
 
-# ---------------- Generate ----------------
-if generate:
-    if not alert_text.strip():
-        st.warning("Please enter a SIEM alert before generating the playbook.")
-        st.stop()
-
-    # Force fresh render every time (prevents stuck state)
-    run_id = str(uuid.uuid4())[:8]
-
-    # Compact alert summary for node
-    alert_summary = textwrap.shorten(
-        alert_text.replace("\n", " "),
-        width=90,
-        placeholder="..."
-    )
-
-    st.success("Deployment playbook generated")
-
-    mermaid = f"""
-flowchart LR
-
-%% ---------------- STYLES ----------------
-classDef ingest fill:#1f77ff,color:#ffffff,stroke:#1f77ff;
-classDef enrich fill:#1f77ff,color:#ffffff,stroke:#1f77ff;
-classDef triage fill:#ff7f0e,color:#ffffff,stroke:#ff7f0e;
-classDef analysis fill:#9467bd,color:#ffffff,stroke:#9467bd;
-classDef decision fill:#f1c40f,color:#000000,stroke:#f1c40f;
-classDef response fill:#e74c3c,color:#ffffff,stroke:#e74c3c;
-classDef notify fill:#2ecc71,color:#ffffff,stroke:#2ecc71;
-
-%% ---------------- ALERT ----------------
-A0["SIEM Alert<br/><small>{alert_summary}</small>"]:::ingest
-
-%% ---------------- ENRICHMENT ----------------
-subgraph E["Alert Intake & Enrichment"]
-    A1["Normalize Fields"]:::enrich
-    A2["Context Enrichment"]:::enrich
-    A0 --> A1 --> A2
-end
-
-%% ---------------- TRIAGE ----------------
-subgraph T["Automated Triage"]
-    T1["Initial Severity Scoring"]:::triage
-    T2["Deduplication Check"]:::triage
-    A2 --> T1 --> T2
-end
-
-%% ---------------- PARALLEL ANALYSIS ----------------
-subgraph AN["Parallel Analysis"]
-    H["Hash / File Analysis"]:::analysis
-    IP["IP Reputation Check"]:::analysis
-    U["Host & User Analysis"]:::analysis
-end
-
-T2 --> H
-T2 --> IP
-T2 --> U
-
-%% ---------------- DECISION ----------------
-D{{"Threat Confirmed?"}}:::decision
-
-H --> D
-IP --> D
-U --> D
-
-%% ---------------- RESPONSE ----------------
-subgraph R["Automated Response"]
-    R1["Auto Containment"]:::response
-    R2["Block IP / Isolate Host"]:::response
-    R3["Preserve Evidence"]:::response
-    R1 --> R2 --> R3
-end
-
-%% ---------------- HUMAN ----------------
-subgraph HR["Human Review"]
-    HR1["SOC Analyst Review"]:::analysis
-end
-
-D -->|Yes| R1
-D -->|Uncertain| HR1
-
-%% ---------------- CLOSURE ----------------
-subgraph C["Closure & Reporting"]
-    C1["Create / Update Incident"]:::notify
-    C2["Notify IR & SOC"]:::notify
-    C3["Final Report"]:::notify
-    C1 --> C2 --> C3
-end
-
-R3 --> C1
-HR1 --> C1
-
-%% ---------------- RUN ----------------
-%% Run ID: {run_id}
-"""
-
-    st.markdown("### 🧭 SOAR Execution Flow")
-    render_mermaid(mermaid)
-
+    # -----------------------------
+    # DOWNLOAD (NO RESET)
+    # -----------------------------
     st.download_button(
-        "⬇️ Download Playbook (Mermaid)",
+        label="⬇️ Download Mermaid Diagram",
         data=mermaid,
         file_name="soar_deployment_playbook.mmd",
-        mime="text/plain"
+        mime="text/plain",
+        use_container_width=False
     )
+
+    # -----------------------------
+    # GOVERNANCE SUMMARY
+    # -----------------------------
+    st.divider()
+    st.header("🔐 Automation Governance")
+
+    st.markdown(
+        """
+        - ✅ **Data collection & enrichment** fully automated  
+        - ⚠️ **Containment actions** are conditional  
+        - 👤 **Identity actions** require SOC approval  
+        - 📁 **Evidence preserved before response**  
+        - 🚫 **No single-signal automation**
+        """
+    )
+
+# -------------------------------------------------
+# PLACEHOLDER: IRP INPUT (NEXT)
+# -------------------------------------------------
+st.divider()
+st.caption("🔜 IRP upload & mapping will be added next (radio toggle).")
