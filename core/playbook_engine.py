@@ -1,68 +1,133 @@
 import os
 import json
-import re
+from pathlib import Path
 from google import genai
 
-# -----------------------------
-# Gemini Client
-# -----------------------------
+# -------------------------------------------------
+# CONFIG
+# -------------------------------------------------
+BASE_DIR = Path(__file__).resolve().parent.parent
+REFERENCE_DIR = BASE_DIR
+
+REFERENCE_FILES = [
+    "reference_context.txt",
+    "reference_chunks.txt",
+    "reference_sources.txt"
+]
+
 API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
     raise RuntimeError("GEMINI_API_KEY not set")
 
 client = genai.Client(api_key=API_KEY)
 
-# -----------------------------
-# Safe JSON Extraction
-# -----------------------------
-def _extract_json(text: str):
-    try:
-        return json.loads(text)
-    except Exception:
-        match = re.search(r"\{[\s\S]*\}", text)
-        if not match:
-            raise ValueError("Model did not return JSON")
-        return json.loads(match.group())
+# -------------------------------------------------
+# LOAD REFERENCE KNOWLEDGE
+# -------------------------------------------------
+def load_reference_material():
+    content = []
+    for file_name in REFERENCE_FILES:
+        path = REFERENCE_DIR / file_name
+        if path.exists():
+            content.append(f"\n--- {file_name} ---\n")
+            content.append(path.read_text(encoding="utf-8"))
+    return "\n".join(content)
 
-# -----------------------------
-# Prompt Builder
-# -----------------------------
-def _build_prompt(alert_text: str, mode: str, depth: str):
-    return f"""
-You are a senior SOC SOAR architect.
+REFERENCE_CONTEXT = load_reference_material()
 
-Return ONLY valid JSON. No markdown. No explanation.
+# -------------------------------------------------
+# CORE AGENT (REAL REASONING)
+# -------------------------------------------------
+def generate_playbook(alert_text: str, mode: str, depth: str):
+    """
+    mode: learning | deployment
+    depth: Beginner | Intermediate | Advanced
+    """
 
-Schema:
-{{
-  "blocks": [
-    {{
-      "title": "",
-      "description": "",
-      "reasoning": ""
-    }}
-  ]
-}}
+    system_prompt = f"""
+You are a SENIOR SOC SOAR ARCHITECT designing production-grade SOAR playbooks.
 
-Mode: {mode}
-Learning depth: {depth}
+You MUST:
+- Think like an enterprise SOC
+- Follow SOAR governance and safety principles
+- Avoid over-automation of destructive actions
+- Explicitly model decision points and human approvals
+- Be technically accurate (SIEM, EDR, IAM, IR, DFIR)
 
-SIEM alert:
-{alert_text}
+REFERENCE MATERIAL (MANDATORY TO USE):
+{REFERENCE_CONTEXT}
+
+OUTPUT RULES:
+- Return ONLY valid JSON
+- NO markdown
+- NO explanation
+- NO prose outside JSON
 """
 
-# -----------------------------
-# Public Engine Function
-# -----------------------------
-def generate_playbook(alert_text: str, mode: str, depth: str):
+    user_prompt = f"""
+ALERT INPUT:
+{alert_text}
+
+MODE:
+{mode}
+
+LEARNING DEPTH:
+{depth}
+
+TASK:
+Analyze the alert and design a SOAR playbook.
+
+You MUST determine:
+1. Alert category (e.g., brute force, malware, phishing, lateral movement)
+2. Required investigations
+3. Confidence scoring logic
+4. Which actions are SAFE to automate
+5. Which actions REQUIRE human approval
+6. Evidence preservation steps
+7. Incident escalation logic
+
+RETURN THIS EXACT JSON SCHEMA:
+
+{{
+  "alert_type": "",
+  "threat_confidence": "Low | Medium | High",
+  "playbook_overview": "",
+  "blocks": [
+    {{
+      "id": "",
+      "name": "",
+      "category": "Enrichment | Analysis | Decision | Containment | Notification | Governance",
+      "description": "",
+      "automation_level": "Automatic | Conditional | Manual",
+      "depends_on": []
+    }}
+  ],
+  "decision_points": [
+    {{
+      "question": "",
+      "yes_path": "",
+      "no_path": ""
+    }}
+  ],
+  "governance": {{
+    "human_approval_required_for": [],
+    "auto_allowed_actions": [],
+    "forbidden_without_approval": []
+  }}
+}}
+"""
+
     response = client.models.generate_content(
         model="models/gemini-2.5-flash",
-        contents=_build_prompt(alert_text, mode, depth)
+        contents=[
+            {"role": "system", "parts": [system_prompt]},
+            {"role": "user", "parts": [user_prompt]}
+        ]
     )
 
-    data = _extract_json(response.text)
+    try:
+        result = json.loads(response.text)
+    except Exception:
+        raise ValueError("Gemini returned invalid JSON. Raw output:\n" + response.text)
 
-    if "blocks" not in data:
-        raise ValueError("Invalid model response")
-
-    return data
+    return result
