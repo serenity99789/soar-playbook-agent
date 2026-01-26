@@ -1,78 +1,37 @@
-from graphviz import Digraph
+# core/diagram_engine.py
 
-
-def generate_soar_svg(playbook_blocks):
+def generate_mermaid_flow():
     """
-    Generates an enterprise-grade SOAR execution flow diagram as SVG.
+    Returns Mermaid flowchart code for SOAR Deployment execution
     """
 
-    dot = Digraph(format="svg")
-    dot.attr(rankdir="TB", bgcolor="white")
+    return """
+flowchart TD
 
-    # Styles
-    styles = {
-        "process": {
-            "shape": "box",
-            "style": "filled,rounded",
-            "fillcolor": "#2563eb",  # blue
-            "fontcolor": "white",
-        },
-        "decision": {
-            "shape": "diamond",
-            "style": "filled",
-            "fillcolor": "#f59e0b",  # amber
-            "fontcolor": "black",
-        },
-        "auto": {
-            "shape": "box",
-            "style": "filled,rounded",
-            "fillcolor": "#dc2626",  # red
-            "fontcolor": "white",
-        },
-        "human": {
-            "shape": "box",
-            "style": "filled,rounded",
-            "fillcolor": "#7c3aed",  # purple
-            "fontcolor": "white",
-        },
-        "evidence": {
-            "shape": "box",
-            "style": "filled,rounded",
-            "fillcolor": "#0ea5e9",  # cyan
-            "fontcolor": "white",
-        },
-        "notify": {
-            "shape": "box",
-            "style": "filled,rounded",
-            "fillcolor": "#16a34a",  # green
-            "fontcolor": "white",
-        },
-    }
+%% ===== Styles =====
+classDef start fill:#2563eb,color:#ffffff,stroke:#1e40af,stroke-width:2px;
+classDef process fill:#3b82f6,color:#ffffff,stroke:#1e40af;
+classDef decision fill:#f59e0b,color:#000000,stroke:#b45309,stroke-width:2px;
+classDef auto fill:#dc2626,color:#ffffff,stroke:#7f1d1d;
+classDef human fill:#7c3aed,color:#ffffff,stroke:#4c1d95;
+classDef evidence fill:#2563eb,color:#ffffff,stroke:#1e40af;
+classDef notify fill:#16a34a,color:#ffffff,stroke:#14532d;
 
-    # Core flow
-    dot.node("validate", "Alert Validation & Enrichment", **styles["process"])
-    dot.node("ti", "Threat Intelligence Lookup", **styles["process"])
-    dot.node("decision", "Threat Confirmed?", **styles["decision"])
+%% ===== Nodes =====
+A[Alert Validation & Enrichment]:::start
+B[Threat Intelligence Lookup]:::process
+C{Threat Confirmed?}:::decision
 
-    dot.edge("validate", "ti")
-    dot.edge("ti", "decision")
+D[Auto Containment]:::auto
+E[Isolate Host / Block IP]:::auto
+F[Preserve Evidence]:::evidence
+G[Notify IR Team]:::notify
 
-    # Yes path
-    dot.node("auto", "Auto Containment", **styles["auto"])
-    dot.node("block", "Isolate Host / Block IP", **styles["auto"])
-    dot.node("evidence", "Preserve Evidence", **styles["evidence"])
-    dot.node("notify", "Notify IR Team", **styles["notify"])
+H[Human Review]:::human
+I[SOC Analyst Decision]:::human
 
-    dot.edge("decision", "auto", label="Yes")
-    dot.edge("auto", "block")
-    dot.edge("block", "evidence")
-    dot.edge("evidence", "notify")
-
-    # Uncertain path
-    dot.node("review", "Human Review", **styles["human"])
-    dot.node("soc", "SOC Analyst Decision", **styles["human"])
-
-    dot.edge("decision", "review", label="Uncertain")
-    dot.edge("review", "soc")
-
-    return dot
+%% ===== Flow =====
+A --> B --> C
+C -- Yes --> D --> E --> F --> G
+C -- Uncertain --> H --> I
+"""
