@@ -1,142 +1,123 @@
 import streamlit as st
-from pathlib import Path
 
-# --------------------------------------------------
-# Page Config
-# --------------------------------------------------
+# -------------------------------------------------
+# Page config
+# -------------------------------------------------
 st.set_page_config(
     page_title="SOAR Learning Platform",
-    page_icon="📘",
-    layout="wide"
+    layout="wide",
 )
 
-# --------------------------------------------------
-# Session State Defaults
-# --------------------------------------------------
-if "mode" not in st.session_state:
-    st.session_state.mode = "home"   # home | learning
+# -------------------------------------------------
+# Session state init
+# -------------------------------------------------
+if "selected_level" not in st.session_state:
+    st.session_state.selected_level = None
 
-if "level" not in st.session_state:
-    st.session_state.level = "Beginner"
+# -------------------------------------------------
+# Learning content (LEVEL-SPECIFIC)
+# -------------------------------------------------
+LEARNING_CONTENT = {
+    "Beginner": {
+        "title": "Beginner Level — SOC Foundations",
+        "sections": [
+            ("What is a SOC?", "A Security Operations Center (SOC) monitors, detects, and responds to security threats across an organization."),
+            ("SOC Analyst Day-to-Day", "SOC analysts review alerts, investigate incidents, escalate threats, and document findings."),
+            ("What is SIEM?", "SIEM aggregates logs and generates alerts based on correlation and detection rules."),
+            ("What is SOAR?", "SOAR automates repetitive SOC tasks and orchestrates response workflows."),
+            ("Alert → Incident lifecycle", "Alerts are triaged, investigated, classified, and either closed or escalated."),
+            ("Why humans still matter", "Automation assists analysts, but judgment and context come from humans."),
+        ],
+    },
+    "Intermediate": {
+        "title": "Intermediate Level — SOC Workflows & Automation",
+        "sections": [
+            ("SOC Investigation Flow", "Learn how alerts move through enrichment, validation, and response."),
+            ("Enrichment & Context", "Threat intel, asset context, and user behavior improve decisions."),
+            ("SOAR Playbooks", "Playbooks define structured, repeatable response actions."),
+            ("Human vs Automated Decisions", "Not all actions should be automated."),
+            ("False Positives", "Reducing noise is critical to SOC efficiency."),
+            ("Metrics that matter", "MTTD, MTTR, alert volume, and escalation rates."),
+        ],
+    },
+    "Advanced": {
+        "title": "Advanced Level — Detection Engineering & SOAR Design",
+        "sections": [
+            ("Detection Engineering", "Design high-fidelity detections aligned to threat models."),
+            ("Threat Modeling", "Map detections to attacker behavior and kill chains."),
+            ("SOAR Architecture", "Design scalable and resilient automation systems."),
+            ("Playbook Governance", "Versioning, approvals, and auditability."),
+            ("Failure Handling", "Design for automation failures and edge cases."),
+            ("Measuring Automation ROI", "Quantify time saved and risk reduced."),
+        ],
+    },
+}
 
-if "progress" not in st.session_state:
-    st.session_state.progress = {
-        "What is a SOC?": True,
-        "SOC Analyst Day-to-Day": True,
-        "What is SIEM?": True,
-        "What is SOAR?": True,
-        "Alert → Incident lifecycle": True,
-        "Why humans still matter": True,
-    }
-
-# --------------------------------------------------
-# Helpers
-# --------------------------------------------------
-def go_home():
-    st.session_state.mode = "home"
-
-def start_learning():
-    st.session_state.mode = "learning"
-
-def render_diagram():
-    diagram_path = Path("assets/workflow.svg")
-    if diagram_path.exists():
-        st.image(str(diagram_path), use_container_width=True)
-    else:
-        st.info("Workflow diagram will appear here.")
-
-# --------------------------------------------------
-# Header (Always visible)
-# --------------------------------------------------
-col1, col2 = st.columns([8, 2])
-with col1:
+# -------------------------------------------------
+# Header
+# -------------------------------------------------
+col_title, col_home = st.columns([6, 1])
+with col_title:
     st.title("SOAR Learning Platform")
-with col2:
-    if st.session_state.mode == "learning":
-        st.button("🏠 Home", on_click=go_home)
+with col_home:
+    st.page_link("Home.py", label="🏠 Home")
 
 st.divider()
 
-# ==================================================
-# 🏠 HOME MODE
-# ==================================================
-if st.session_state.mode == "home":
-
+# -------------------------------------------------
+# Level selection (ONLY shown if not started)
+# -------------------------------------------------
+if st.session_state.selected_level is None:
     st.subheader("Select your current level")
 
-    st.session_state.level = st.radio(
+    level = st.radio(
         "",
         ["Beginner", "Intermediate", "Advanced"],
-        index=["Beginner", "Intermediate", "Advanced"].index(st.session_state.level)
+        horizontal=False,
     )
 
-    st.button("Start Learning", on_click=start_learning)
+    if st.button("Start Learning"):
+        st.session_state.selected_level = level
+        st.rerun()
 
-# ==================================================
-# 📘 LEARNING MODE
-# ==================================================
-if st.session_state.mode == "learning":
+    st.stop()
 
-    left, right = st.columns([3, 2])
+# -------------------------------------------------
+# Render selected level
+# -------------------------------------------------
+level = st.session_state.selected_level
+content = LEARNING_CONTENT[level]
 
-    # -------------------------------
-    # LEFT: Learning Content
-    # -------------------------------
-    with left:
-        st.header(f"{st.session_state.level} Level — Learning Path")
+left, right = st.columns([2, 1])
 
-        st.subheader("Progress Tracker")
+# -------------------------------------------------
+# LEFT COLUMN — Learning Path & Content
+# -------------------------------------------------
+with left:
+    st.subheader(f"{level} Level — Learning Path")
+    st.markdown("### Progress Tracker")
 
-        completed = 0
-        total = len(st.session_state.progress)
+    total = len(content["sections"])
+    completed = total  # static for now
 
-        for item, done in st.session_state.progress.items():
-            st.checkbox(item, value=done, disabled=True)
-            if done:
-                completed += 1
+    for title, _ in content["sections"]:
+        st.checkbox(title, value=True, disabled=True)
 
-        st.progress(completed / total)
-        st.caption(f"Progress: {completed} / {total} sections completed")
+    st.progress(completed / total)
+    st.caption(f"Progress: {completed} / {total} sections completed")
 
-        st.divider()
+    st.divider()
 
-        st.header("Beginner Level — SOC Foundations")
+    st.subheader(content["title"])
 
-        with st.expander("1️⃣ What is a SOC?"):
-            st.write(
-                "A Security Operations Center (SOC) is a centralized team responsible "
-                "for monitoring, detecting, investigating, and responding to security threats."
-            )
+    for idx, (title, body) in enumerate(content["sections"], start=1):
+        with st.expander(f"{idx}. {title}", expanded=False):
+            st.write(body)
 
-        with st.expander("2️⃣ SOC Analyst Day-to-Day"):
-            st.write(
-                "SOC analysts review alerts, validate incidents, investigate context, "
-                "and coordinate responses."
-            )
+# -------------------------------------------------
+# RIGHT COLUMN — Workflow Diagram
+# -------------------------------------------------
+with right:
+    st.subheader("Workflow Diagram")
+    st.info("Workflow diagram will appear here.")
 
-        with st.expander("3️⃣ What is SIEM?"):
-            st.write(
-                "SIEM aggregates logs and events, correlates activity, and generates alerts."
-            )
-
-        with st.expander("4️⃣ What is SOAR?"):
-            st.write(
-                "SOAR automates repetitive tasks and orchestrates response workflows."
-            )
-
-        with st.expander("5️⃣ Alert → Incident Lifecycle"):
-            st.write(
-                "Alerts are triaged, enriched, investigated, escalated, or closed."
-            )
-
-        with st.expander("6️⃣ Why humans still matter"):
-            st.write(
-                "Automation assists analysts — it does not replace judgment."
-            )
-
-    # -------------------------------
-    # RIGHT: Diagram
-    # -------------------------------
-    with right:
-        st.subheader("Workflow Diagram")
-        render_diagram()
