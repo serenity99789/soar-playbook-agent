@@ -1,104 +1,49 @@
 import sys
 from pathlib import Path
 
-# -------------------------------------------------
-# FIX IMPORT PATH (PROJECT ROOT)
-# -------------------------------------------------
+# --- Ensure project root is available for imports ---
 ROOT_DIR = Path(__file__).resolve().parents[1]
-sys.path.append(str(ROOT_DIR))
+if str(ROOT_DIR) not in sys.path:
+    sys.path.append(str(ROOT_DIR))
 
 import streamlit as st
 from core.playbook_engine import generate_playbook
 
-# -------------------------------------------------
-# PAGE CONFIG
-# -------------------------------------------------
+
+# ------------------ PAGE CONFIG ------------------
 st.set_page_config(
     page_title="SOAR Playbook Deployment",
-    layout="wide"
+    page_icon="🚀",
+    layout="centered"
 )
 
-# -------------------------------------------------
-# HEADER
-# -------------------------------------------------
+# ------------------ UI ------------------
 st.title("🚀 SOAR Playbook Deployment")
 st.caption("Generate a production-ready SOAR playbook for execution")
 
-st.divider()
-
-# -------------------------------------------------
-# INPUT
-# -------------------------------------------------
 st.subheader("🔔 SIEM Alert Input")
-
 alert_text = st.text_area(
-    "Describe the alert raised by SIEM",
-    height=180,
-    placeholder="Example: Multiple failed login attempts detected from a single external IP targeting multiple user accounts..."
+    "",
+    placeholder=(
+        "Example: Multiple failed login attempts detected from a single external IP "
+        "targeting multiple user accounts..."
+    )
 )
 
-# -------------------------------------------------
-# GENERATE
-# -------------------------------------------------
+# ------------------ ACTION ------------------
 if st.button("Generate Deployment Playbook"):
     if not alert_text.strip():
         st.warning("Please describe the SIEM alert.")
-        st.stop()
-
-    with st.spinner("Generating deployment-ready playbook..."):
-        try:
+    else:
+        with st.spinner("Generating deployment playbook..."):
             data = generate_playbook(
                 alert_text=alert_text,
-                mode="deployment",
-                depth="Intermediate"
-            )
-        except Exception as e:
-            st.error("Failed to generate deployment playbook.")
-            st.code(str(e))
-            st.stop()
-
-    st.success("Deployment playbook generated")
-
-    # -------------------------------------------------
-    # DEPLOYMENT BLOCKS
-    # -------------------------------------------------
-    st.header("🧩 Executable SOAR Workflow")
-
-    for idx, block in enumerate(data["blocks"], start=1):
-        with st.expander(f"Step {idx}: {block['block_name']}"):
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.markdown("**Trigger / Input**")
-                st.markdown(block.get("trigger", "SIEM Alert Event"))
-
-                st.markdown("**Automated Actions**")
-                for action in block.get("automated_actions", []):
-                    st.markdown(f"- {action}")
-
-            with col2:
-                st.markdown("**Decision Logic**")
-                st.markdown(block.get("decision_logic", "N/A"))
-
-                st.markdown("**Outputs**")
-                for output in block.get("outputs", []):
-                    st.markdown(f"- {output}")
-
-            st.divider()
-
-            st.markdown("**Failure Handling / Escalation**")
-            st.markdown(
-                block.get(
-                    "failure_handling",
-                    "Escalate to SOC L2 / Incident Response team"
-                )
+                mode="deployment"
             )
 
-    # -------------------------------------------------
-    # FOOTER NOTE
-    # -------------------------------------------------
-    st.info(
-        "This view is intentionally execution-focused. "
-        "All learning context and analyst reasoning is handled in the Learning section."
-    )
+        st.success("Deployment playbook generated")
+
+        for i, block in enumerate(data.get("blocks", []), start=1):
+            st.markdown(f"### Step {i}: {block.get('title', 'Playbook Step')}")
+            st.write(block.get("description", ""))
+            st.markdown("---")
