@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import os
 
 # --------------------------------------------------
@@ -43,42 +44,67 @@ def reset_learning():
     st.session_state.lp_level = None
 
 
+def render_mermaid(mermaid_code: str, height: int = 360):
+    html = f"""
+    <html>
+      <head>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+        <script>
+          mermaid.initialize({{
+            startOnLoad: true,
+            theme: 'default'
+          }});
+        </script>
+      </head>
+      <body>
+        <div class="mermaid">
+{mermaid_code}
+        </div>
+      </body>
+    </html>
+    """
+    components.html(html, height=height, scrolling=False)
+
+
 def render_diagram(level: str):
     if level == "beginner":
-        st.mermaid(
+        render_mermaid(
             """
-            flowchart LR
-                A[SIEM Alert] --> B[Analyst Reviews Alert]
-                B --> C{Suspicious?}
-                C -- No --> D[Close Alert]
-                C -- Yes --> E[Investigate]
-                E --> F[Incident Response]
-            """
+flowchart LR
+    A[SIEM Alert] --> B[Analyst Reviews Alert]
+    B --> C{Suspicious?}
+    C -- No --> D[Close Alert]
+    C -- Yes --> E[Investigate]
+    E --> F[Incident Response]
+            """,
+            height=320
         )
 
     elif level == "intermediate":
-        st.mermaid(
+        render_mermaid(
             """
-            flowchart LR
-                A[Alert Trigger] --> B[Context Enrichment]
-                B --> C{Confidence High?}
-                C -- Yes --> D[Automated Action]
-                C -- No --> E[Human Review]
-                E --> D
-                D --> F[Update Case]
-            """
+flowchart LR
+    A[Alert Trigger] --> B[Context Enrichment]
+    B --> C{Confidence High?}
+    C -- Yes --> D[Automated Action]
+    C -- No --> E[Human Review]
+    E --> D
+    D --> F[Update Case]
+            """,
+            height=360
         )
 
     elif level == "advanced":
-        st.mermaid(
+        render_mermaid(
             """
-            flowchart LR
-                A[Playbook Change] --> B[Peer Review]
-                B --> C{Approved?}
-                C -- No --> D[Rework]
-                C -- Yes --> E[Deploy to Prod]
-                E --> F[Monitor & Audit]
-            """
+flowchart LR
+    A[Playbook Change] --> B[Peer Review]
+    B --> C{Approved?}
+    C -- No --> D[Rework]
+    C -- Yes --> E[Deploy to Prod]
+    E --> F[Monitor & Audit]
+            """,
+            height=320
         )
 
 
@@ -128,7 +154,7 @@ else:
     level = st.session_state.lp_level
 
     st.markdown(f"# {level.capitalize()} Level")
-    st.caption("Visual workflow + structured learning content")
+    st.caption("Structured learning + visual workflow")
     st.markdown("---")
 
     left, right = st.columns([3, 2])
