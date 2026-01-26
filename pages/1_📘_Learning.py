@@ -19,17 +19,40 @@ if "lp_state" not in st.session_state:
 if "lp_level" not in st.session_state:
     st.session_state.lp_level = "beginner"
 
+if "lp_progress" not in st.session_state:
+    st.session_state.lp_progress = {}
+
+# -------------------------------------------------
+# Learning Structure
+# -------------------------------------------------
+LEARNING_SECTIONS = {
+    "beginner": [
+        "What is a SOC?",
+        "SOC Analyst Day-to-Day",
+        "What is SIEM?",
+        "What is SOAR?",
+        "Alert → Incident lifecycle",
+        "Why humans still matter"
+    ],
+    "intermediate": [
+        "SOC investigation flow",
+        "SIEM enrichment concepts",
+        "SOAR playbook structure",
+        "Human vs automated decisions",
+        "Case management best practices"
+    ],
+    "advanced": [
+        "Detection engineering basics",
+        "Risk-based alerting",
+        "Advanced SOAR orchestration",
+        "False positive reduction",
+        "SOC maturity & scaling"
+    ]
+}
+
 # -------------------------------------------------
 # Helpers
 # -------------------------------------------------
-def load_learning_markdown(level: str) -> str:
-    path = os.path.join("learning", f"{level}.md")
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    return "_Content coming soon._"
-
-
 def render_workflow_diagram(level: str):
     if level == "beginner":
         diagram = """
@@ -60,11 +83,10 @@ def render_workflow_diagram(level: str):
             --> C{Risk Score > Threshold?}
 
             C -- Yes --> D[Auto Containment]
-            D --> E[Threat Intel Sync]
-            E --> F[Notify SOC + IR]
+            D --> E[Notify IR Team]
 
-            C -- No --> G[Analyst Decision]
-            G --> H[Manual Response or Close]
+            C -- No --> F[Analyst Decision]
+            F --> G[Manual Response]
         """
 
     html = f"""
@@ -91,7 +113,7 @@ def render_workflow_diagram(level: str):
     components.html(html, height=260, scrolling=False)
 
 # -------------------------------------------------
-# Header with Home Button
+# Header
 # -------------------------------------------------
 header_col, home_col = st.columns([6, 1])
 
@@ -107,15 +129,14 @@ with home_col:
 st.markdown("---")
 
 # -------------------------------------------------
-# Intro / Level Selection
+# Intro View
 # -------------------------------------------------
 if st.session_state.lp_state == "intro":
-
     st.subheader("How SOC teams think — not just what they automate")
 
     st.markdown(
         "Learn **SOC, SIEM, and SOAR** the way analysts actually use them. "
-        "Choose your level and start learning with real workflows."
+        "Choose your level and progress step-by-step."
     )
 
     level = st.radio(
@@ -135,11 +156,33 @@ if st.session_state.lp_state == "intro":
 else:
     level = st.session_state.lp_level
 
+    if level not in st.session_state.lp_progress:
+        st.session_state.lp_progress[level] = {
+            section: False for section in LEARNING_SECTIONS[level]
+        }
+
     col1, col2 = st.columns([3, 2])
 
     with col1:
-        st.markdown(f"## {level.capitalize()} Level — SOC Workflows & Automation")
-        st.markdown(load_learning_markdown(level))
+        st.markdown(f"## {level.capitalize()} Level — Learning Path")
+
+        st.markdown("### Progress Tracker")
+
+        completed = 0
+
+        for section in LEARNING_SECTIONS[level]:
+            checked = st.checkbox(
+                section,
+                value=st.session_state.lp_progress[level][section]
+            )
+            st.session_state.lp_progress[level][section] = checked
+            if checked:
+                completed += 1
+
+        progress = int((completed / len(LEARNING_SECTIONS[level])) * 100)
+        st.progress(progress)
+
+        st.caption(f"Progress: {completed}/{len(LEARNING_SECTIONS[level])} sections completed")
 
     with col2:
         st.markdown("### Workflow Diagram")
