@@ -1,3 +1,16 @@
+# =================================================
+# BOOTSTRAP IMPORT PATH (DO NOT REMOVE)
+# =================================================
+import sys
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).parent.resolve()
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+# =================================================
+# ORIGINAL CODE (UNCHANGED)
+# =================================================
 import os
 import json
 import re
@@ -146,5 +159,5 @@ if st.button("Generate Playbook"):
         st.header("SOAR Workflow")
         render_mermaid(generate_mermaid(blocks))
 
-    except Exception as e:
+    except Exception:
         st.error("Model output could not be parsed. Click Generate again.")
