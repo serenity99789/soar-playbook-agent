@@ -21,51 +21,38 @@ if not API_KEY:
 client = genai.Client(api_key=API_KEY)
 
 # -------------------------------------------------
-# LOAD + LIMIT REFERENCE MATERIAL
+# LOAD REFERENCE MATERIAL
 # -------------------------------------------------
-def load_reference_material(max_chars: int = 6000) -> str:
-    """
-    Loads reference files but HARD limits total size
-    to avoid Gemini request rejection.
-    """
-    combined = []
-
+def load_reference_material():
+    material = []
     for name in REFERENCE_FILES:
         path = BASE_DIR / name
         if path.exists():
-            text = path.read_text(encoding="utf-8")
-            combined.append(f"\n--- {name} ---\n{text}")
-
-    joined = "\n".join(combined)
-
-    # HARD truncate (enterprise-safe)
-    if len(joined) > max_chars:
-        joined = joined[:max_chars] + "\n\n[TRUNCATED FOR MODEL SAFETY]"
-
-    return joined
+            material.append(f"\n--- {name} ---\n")
+            material.append(path.read_text(encoding="utf-8"))
+    return "\n".join(material)
 
 REFERENCE_CONTEXT = load_reference_material()
 
 # -------------------------------------------------
-# REAL SOAR AGENT (CLOUD-SAFE)
+# REAL SOAR AGENT (SDK-CORRECT)
 # -------------------------------------------------
 def generate_playbook(alert_text: str, mode: str, depth: str):
     """
-    Generates a production-grade SOAR playbook using Gemini.
-    Cloud-safe, size-limited, deterministic.
+    Generates a real SOAR playbook using Gemini reasoning.
     """
 
     prompt = f"""
 You are a SENIOR SOC SOAR ARCHITECT designing production-grade SOAR playbooks.
 
-STRICT RULES:
+You MUST:
 - Think like an enterprise SOC
-- Apply SIEM, EDR, IAM, DFIR reasoning
+- Apply SIEM, EDR, IAM, DFIR principles
 - Avoid unsafe automation
-- Explicitly model decisions & human approval
-- Be technically precise, not generic
+- Explicitly define decision points
+- Clearly separate automated vs human actions
 
-REFERENCE MATERIAL (USE THIS CONTEXT):
+REFERENCE MATERIAL (MANDATORY):
 {REFERENCE_CONTEXT}
 
 ALERT INPUT:
@@ -74,11 +61,20 @@ ALERT INPUT:
 MODE:
 {mode}
 
-DEPTH:
+LEARNING DEPTH:
 {depth}
 
 TASK:
 Analyze the alert and design a SOAR playbook.
+
+You MUST determine:
+1. Alert category
+2. Investigations required
+3. Threat confidence
+4. Safe automation actions
+5. Human approval checkpoints
+6. Evidence preservation steps
+7. Escalation logic
 
 RETURN ONLY VALID JSON.
 NO markdown.
@@ -114,22 +110,14 @@ JSON SCHEMA:
 }}
 """
 
-    try:
-        response = client.models.generate_content(
-            model="models/gemini-1.5-flash",
-            contents=prompt,
-        )
-    except Exception as e:
-        raise RuntimeError(
-            "Gemini request failed (likely prompt size or model issue).\n"
-            "Error: " + str(e)
-        )
-
-    raw = response.text.strip()
+    response = client.models.generate_content(
+        model="models/gemini-2.5-flash",
+        contents=prompt,
+    )
 
     try:
-        return json.loads(raw)
+        return json.loads(response.text)
     except Exception:
         raise ValueError(
-            "Gemini returned INVALID JSON.\n\nRAW OUTPUT:\n" + raw
+            "Gemini returned invalid JSON.\n\nRAW OUTPUT:\n" + response.text
         )
