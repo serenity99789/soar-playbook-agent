@@ -34,14 +34,14 @@ def extract_text_from_pdf(uploaded_file) -> str:
         return ""
 
     reader = PdfReader(uploaded_file)
-    text = []
+    pages = []
 
     for page in reader.pages:
-        page_text = page.extract_text()
-        if page_text:
-            text.append(page_text)
+        text = page.extract_text()
+        if text:
+            pages.append(text)
 
-    return "\n".join(text)
+    return "\n".join(pages)
 
 
 def extract_text_from_docx(uploaded_file) -> str:
@@ -55,24 +55,27 @@ def extract_text_from_docx(uploaded_file) -> str:
 
 
 # -------------------------------------------------
-# Input Mode Selector
+# Input Source Selector
 # -------------------------------------------------
 st.subheader("Input Source")
 
 input_mode = st.radio(
     label="Choose input method",
-    options=["SIEM Alert Text", "Upload Incident Response Plan (IRP)"],
+    options=[
+        "SIEM Alert Text",
+        "Upload Incident Response Plan (IRP)"
+    ],
     horizontal=True
 )
 
 
 # -------------------------------------------------
-# Side-by-Side Layout
+# Conditional Input Panels (QoL Clean)
 # -------------------------------------------------
-left_col, right_col = st.columns(2)
+combined_input: Optional[str] = None
 
+if input_mode == "SIEM Alert Text":
 
-with left_col:
     st.subheader("SIEM Alert Input")
 
     alert_text = st.text_area(
@@ -84,19 +87,35 @@ with left_col:
             "registered mobile number from unknown sources within a short time window. "
             "The activity is associated with repeated DigiLocker login attempts and may "
             "indicate brute-force authentication attempts, SMS spoofing, or SIM swap activity."
-        ),
-        disabled=(input_mode != "SIEM Alert Text")
+        )
     )
 
+    if alert_text.strip():
+        combined_input = alert_text
 
-with right_col:
+
+elif input_mode == "Upload Incident Response Plan (IRP)":
+
     st.subheader("Incident Response Plan (IRP)")
 
     irp_file = st.file_uploader(
         label="Upload IRP (PDF / DOC / DOCX)",
-        type=["pdf", "doc", "docx"],
-        disabled=(input_mode != "Upload Incident Response Plan (IRP)")
+        type=["pdf", "doc", "docx"]
     )
+
+    if irp_file is not None:
+        filename = irp_file.name.lower()
+
+        if filename.endswith(".pdf"):
+            irp_text = extract_text_from_pdf(irp_file)
+        else:
+            irp_text = extract_text_from_docx(irp_file)
+
+        if irp_text.strip():
+            combined_input = (
+                "INCIDENT RESPONSE PLAN (IRP):\n"
+                f"{irp_text}"
+            )
 
 
 # -------------------------------------------------
@@ -104,34 +123,9 @@ with right_col:
 # -------------------------------------------------
 if st.button("Generate Deployment Playbook", type="primary"):
 
-    combined_input: Optional[str] = None
-
-    if input_mode == "SIEM Alert Text":
-        if not alert_text.strip():
-            st.warning("Please paste a SIEM alert before generating the playbook.")
-        else:
-            combined_input = alert_text
-
-    elif input_mode == "Upload Incident Response Plan (IRP)":
-        if irp_file is None:
-            st.warning("Please upload an Incident Response Plan file.")
-        else:
-            file_name = irp_file.name.lower()
-
-            if file_name.endswith(".pdf"):
-                irp_text = extract_text_from_pdf(irp_file)
-            else:
-                irp_text = extract_text_from_docx(irp_file)
-
-            if not irp_text.strip():
-                st.warning("Unable to extract text from the uploaded IRP.")
-            else:
-                combined_input = (
-                    "INCIDENT RESPONSE PLAN (IRP):\n"
-                    f"{irp_text}"
-                )
-
-    if combined_input:
+    if not combined_input:
+        st.warning("Please provide a valid input before generating the playbook.")
+    else:
         with st.spinner("Generating SOAR deployment playbook..."):
 
             result = generate_playbook(
