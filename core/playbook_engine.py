@@ -24,9 +24,6 @@ client = Groq(api_key=GROQ_API_KEY)
 # LOAD + LIMIT REFERENCE MATERIAL
 # -------------------------------------------------
 def load_reference_material(max_chars: int = 6000) -> str:
-    """
-    Load SOC / SOAR reference material with a hard safety limit.
-    """
     content = []
 
     for name in REFERENCE_FILES:
@@ -46,25 +43,24 @@ def load_reference_material(max_chars: int = 6000) -> str:
 REFERENCE_CONTEXT = load_reference_material()
 
 # -------------------------------------------------
-# DYNAMIC SOAR AGENT (LLM-DRIVEN, NOT TEMPLATE)
+# DYNAMIC SOAR AGENT (GROQ + MIXTRAL)
 # -------------------------------------------------
 def generate_playbook(alert_text: str, mode: str, depth: str) -> dict:
     """
     Dynamic SOAR reasoning engine.
-    LLM decides the flow, engine enforces structure.
+    Uses Groq-hosted Mixtral for stability and quota safety.
     """
 
     system_prompt = f"""
 You are a SENIOR ENTERPRISE SOAR ARCHITECT.
 
-Your job is to ANALYZE security incidents and DESIGN
-SAFE, REALISTIC, ENTERPRISE-GRADE SOAR EXECUTION PLANS.
+You design REALISTIC, SAFE, ENTERPRISE-GRADE SOAR PLAYBOOKS.
 
-You MUST:
+RULES:
 - Think like a SOC analyst (L1 → L3)
 - Apply SIEM, EDR, IAM, DFIR reasoning
-- Avoid unsafe or irreversible automation
-- Introduce decision points where risk exists
+- NO unsafe or irreversible automation
+- Introduce decision points when risk exists
 - Preserve evidence BEFORE containment
 - Clearly separate automated vs human actions
 
@@ -75,7 +71,6 @@ OUTPUT RULES:
 - RETURN ONLY VALID JSON
 - NO markdown
 - NO explanations
-- NO filler text
 """
 
     user_prompt = f"""
@@ -89,8 +84,7 @@ DEPTH:
 {depth}
 
 TASK:
-Dynamically reason about this alert and produce a SOAR execution plan.
-
+Dynamically analyze the alert and produce a SOAR execution plan.
 The plan MUST be scenario-specific and technically accurate.
 
 JSON SCHEMA (STRICT):
@@ -125,7 +119,7 @@ JSON SCHEMA (STRICT):
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.1-70b-versatile",
+            model="mixtral-8x7b-32768",
             temperature=0.2,
             messages=[
                 {"role": "system", "content": system_prompt},
