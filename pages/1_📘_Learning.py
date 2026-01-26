@@ -1,24 +1,6 @@
 import streamlit as st
-from pathlib import Path
-import importlib.util
+import app
 
-# -------------------------------------------------
-# LOAD CORE ENGINE BY FILE PATH (GUARANTEED)
-# -------------------------------------------------
-ENGINE_PATH = Path(__file__).resolve().parents[1] / "core" / "playbook_engine.py"
-
-spec = importlib.util.spec_from_file_location(
-    "playbook_engine",
-    ENGINE_PATH
-)
-playbook_engine = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(playbook_engine)
-
-generate_playbook = playbook_engine.generate_playbook
-
-# -------------------------------------------------
-# PAGE CONFIG
-# -------------------------------------------------
 st.set_page_config(
     page_title="SOAR Learning Platform",
     page_icon="📘",
@@ -29,13 +11,10 @@ st.caption("Built for enterprise SOC learning")
 
 st.title("📘 SOAR Learning Platform")
 st.info(
-    "This section teaches how SIEM alerts translate into SOAR workflows, "
-    "why each response step exists, and how SOC teams reason during incidents."
+    "This section explains how SIEM detections translate into SOAR workflows, "
+    "why each step exists, and how SOC analysts reason during incidents."
 )
 
-# -------------------------------------------------
-# UI
-# -------------------------------------------------
 depth = st.radio(
     "Learning Depth",
     ["Beginner", "Intermediate", "Advanced"],
@@ -48,15 +27,12 @@ alert_text = st.text_area(
     height=160
 )
 
-# -------------------------------------------------
-# GENERATE
-# -------------------------------------------------
 if st.button("Generate Learning Playbook"):
     if not alert_text.strip():
         st.warning("Please describe the SIEM alert.")
     else:
         with st.spinner("Generating learning playbook..."):
-            result = generate_playbook(
+            result = app.generate_playbook(
                 alert_text=alert_text,
                 mode="learning",
                 depth=depth
@@ -65,7 +41,11 @@ if st.button("Generate Learning Playbook"):
         st.success("Playbook generated")
 
         for i, block in enumerate(result["blocks"], 1):
-            st.markdown(f"### Step {i}: {block['title']}")
-            st.markdown(block["description"])
-            if block.get("reasoning"):
-                st.caption(f"💡 SOC Reasoning: {block['reasoning']}")
+            with st.expander(f"Step {i}: {block['title']}"):
+                st.markdown(f"**Why this step exists:** {block['why']}")
+                st.markdown(f"**SOC Role:** {block['soc_role']}")
+                st.markdown(f"**If skipped:** {block['if_skipped']}")
+                st.markdown("---")
+                st.markdown(f"🧠 **Decision Logic:** {block['decision_logic']}")
+                st.markdown(f"⚠️ **Automation Risk:** {block['automation_risk']}")
+                st.markdown(f"👤 **Human Takeover:** {block['human_takeover']}")
