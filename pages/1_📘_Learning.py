@@ -1,59 +1,59 @@
 import streamlit as st
-import os
-import streamlit.components.v1 as components
+from pathlib import Path
 
-# -------------------------------------------------
+# --------------------------------------------------
 # Page Config
-# -------------------------------------------------
+# --------------------------------------------------
 st.set_page_config(
     page_title="SOAR Learning Platform",
     layout="wide"
 )
 
-# -------------------------------------------------
+# --------------------------------------------------
 # Session State Init
-# -------------------------------------------------
+# --------------------------------------------------
 if "lp_state" not in st.session_state:
     st.session_state.lp_state = "intro"  # intro | learning
 
 if "lp_level" not in st.session_state:
-    st.session_state.lp_level = "beginner"
+    st.session_state.lp_level = None
 
 if "siemmy_open" not in st.session_state:
     st.session_state.siemmy_open = False
 
-# -------------------------------------------------
+# --------------------------------------------------
 # Helpers
-# -------------------------------------------------
-def reset_home():
-    st.session_state.lp_state = "intro"
-    st.session_state.lp_level = "beginner"
+# --------------------------------------------------
+LEARNING_DIR = Path("learning")
 
-def load_learning_content(level):
-    path = os.path.join("learning", f"{level}.md")
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    return "⚠️ Learning content not found."
+def load_markdown(level: str):
+    path = LEARNING_DIR / f"{level}.md"
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    return "Content coming soon."
 
-# -------------------------------------------------
+# --------------------------------------------------
 # Header
-# -------------------------------------------------
+# --------------------------------------------------
 col1, col2 = st.columns([8, 2])
 with col1:
     st.title("SOAR Learning Platform")
 with col2:
-    st.button("🏠 Home", on_click=reset_home)
+    if st.button("🏠 Home"):
+        st.session_state.lp_state = "intro"
+        st.session_state.lp_level = None
+        st.session_state.siemmy_open = False
+        st.rerun()
 
-st.markdown("---")
+st.divider()
 
-# -------------------------------------------------
-# INTRO SCREEN (STEP 1)
-# -------------------------------------------------
+# --------------------------------------------------
+# INTRO PAGE
+# --------------------------------------------------
 if st.session_state.lp_state == "intro":
 
-    st.markdown("## How SOC teams think — not just what they automate")
-    st.markdown(
+    st.subheader("How SOC teams think — not just what they automate")
+    st.write(
         "Learn **SOC, SIEM, and SOAR** the way analysts actually use them. "
         "Choose your level and start learning with real workflows."
     )
@@ -61,8 +61,8 @@ if st.session_state.lp_state == "intro":
     st.markdown("### Select your current level")
 
     level = st.radio(
-        "",
-        ["Beginner", "Intermediate", "Advanced"],
+        label="",
+        options=["Beginner", "Intermediate", "Advanced"],
         horizontal=True
     )
 
@@ -71,100 +71,68 @@ if st.session_state.lp_state == "intro":
         st.session_state.lp_state = "learning"
         st.rerun()
 
-# -------------------------------------------------
-# LEARNING SCREEN (STEP 2)
-# -------------------------------------------------
-else:
+# --------------------------------------------------
+# LEARNING PAGE
+# --------------------------------------------------
+if st.session_state.lp_state == "learning":
+
     st.caption(f"Level: {st.session_state.lp_level.capitalize()}")
+    st.markdown("## Learning Content")
 
-    col_left, col_right = st.columns([6, 4])
+    content = load_markdown(st.session_state.lp_level)
+    st.markdown(content)
 
-    with col_left:
-        st.subheader("Learning Content")
-        with st.expander("Open learning sections", expanded=True):
-            st.markdown(load_learning_content(st.session_state.lp_level))
+# --------------------------------------------------
+# FLOATING SIEMMY (Launcher Only)
+# --------------------------------------------------
+st.markdown(
+    """
+    <style>
+    .siemmy-btn {
+        position: fixed;
+        bottom: 25px;
+        right: 25px;
+        z-index: 9999;
+    }
+    .siemmy-box {
+        position: fixed;
+        bottom: 90px;
+        right: 25px;
+        width: 340px;
+        background: white;
+        border-radius: 14px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        z-index: 9999;
+        padding: 16px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-    with col_right:
-        st.subheader("SOAR Workflow")
-        st.image(
-            "https://raw.githubusercontent.com/serenity99789/soar-playbook-agent/main/soar_playbook.svg",
-            use_container_width=True
+# Floating button
+with st.container():
+    st.markdown('<div class="siemmy-btn">', unsafe_allow_html=True)
+    if st.button("👋 Siemmy"):
+        st.session_state.siemmy_open = not st.session_state.siemmy_open
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# --------------------------------------------------
+# SIEMMY CHAT PANEL
+# --------------------------------------------------
+if st.session_state.siemmy_open:
+    st.markdown('<div class="siemmy-box">', unsafe_allow_html=True)
+    st.markdown("### 👋 Hi, I’m **Siemmy**")
+    st.write("Want help understanding **SOC, SIEM, or SOAR**?")
+    st.caption("Ask anything — I’m here to guide you.")
+
+    user_q = st.text_input("Ask Siemmy…", key="siemmy_input")
+
+    if user_q:
+        st.markdown("**Siemmy:**")
+        st.write(
+            "Great question. In SOC environments, this exists because "
+            "automation supports analysts — it doesn’t replace judgment."
         )
 
-# -------------------------------------------------
-# SIEMMY FLOATING CHAT (STEP 3)
-# -------------------------------------------------
-siemmy_button = """
-<style>
-#siemmy-btn {
-    position: fixed;
-    bottom: 24px;
-    right: 24px;
-    background-color: #ff4b4b;
-    color: white;
-    border-radius: 999px;
-    padding: 14px 18px;
-    font-weight: 600;
-    cursor: pointer;
-    z-index: 9999;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-}
-</style>
-
-<div id="siemmy-btn" onclick="window.location.href='?siemmy=open'">
-👋 Siemmy
-</div>
-"""
-
-siemmy_chat = """
-<style>
-#siemmy-chat {
-    position: fixed;
-    bottom: 90px;
-    right: 24px;
-    width: 340px;
-    background: white;
-    border-radius: 16px;
-    box-shadow: 0 20px 40px rgba(0,0,0,0.25);
-    z-index: 10000;
-    overflow: hidden;
-    font-family: sans-serif;
-}
-#siemmy-header {
-    background: #ff4b4b;
-    color: white;
-    padding: 12px;
-    font-weight: 700;
-}
-#siemmy-body {
-    padding: 12px;
-    font-size: 14px;
-}
-#siemmy-input {
-    border-top: 1px solid #eee;
-    padding: 10px;
-}
-</style>
-
-<div id="siemmy-chat">
-    <div id="siemmy-header">👋 Siemmy</div>
-    <div id="siemmy-body">
-        <b>Hey! I’m Siemmy.</b><br>
-        Want help understanding <b>SOC, SIEM, or SOAR</b>?<br><br>
-        Ask me anything — I’m always here.
-    </div>
-    <div id="siemmy-input">
-        <input type="text" placeholder="Type your question…" style="width:100%; padding:8px;">
-    </div>
-</div>
-"""
-
-query_params = st.experimental_get_query_params()
-
-if "siemmy" in query_params:
-    st.session_state.siemmy_open = True
-
-if st.session_state.siemmy_open:
-    components.html(siemmy_chat, height=420)
-else:
-    components.html(siemmy_button, height=80)
+    st.markdown('</div>', unsafe_allow_html=True)
