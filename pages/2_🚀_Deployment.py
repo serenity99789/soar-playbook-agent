@@ -30,7 +30,8 @@ st.subheader("SIEM Alert Input")
 alert_text = st.text_area(
     label="Paste the SIEM alert / incident description",
     height=180,
-    value=(
+    placeholder=(
+        "Example:\n"
         "Multiple One-Time Password (OTP) messages were detected being sent to a user's "
         "registered mobile number from unknown sources within a short time window. "
         "The activity is associated with repeated DigiLocker login attempts and may "
@@ -45,7 +46,7 @@ alert_text = st.text_area(
 if st.button("Generate Deployment Playbook", type="primary"):
 
     if not alert_text.strip():
-        st.warning("Please provide a SIEM alert before generating the playbook.")
+        st.warning("Please paste a SIEM alert before generating the playbook.")
     else:
         with st.spinner("Generating SOAR deployment playbook..."):
 
