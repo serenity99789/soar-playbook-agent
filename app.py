@@ -17,16 +17,6 @@ st.set_page_config(page_title="SOAR Playbook Generator", layout="wide")
 st.caption("Built by Accenture")
 
 # -------------------------------------------------
-# MODE SELECTOR (NEW)
-# -------------------------------------------------
-output_mode = st.radio(
-    "Output Mode",
-    ["Learning Mode", "Deployment Mode"],
-    horizontal=True,
-    help="Learning Mode explains SOC concepts. Deployment Mode shows a clean operational playbook."
-)
-
-# -------------------------------------------------
 # SESSION STATE
 # -------------------------------------------------
 state_defaults = {
@@ -55,7 +45,7 @@ client = genai.Client(api_key=API_KEY)
 # -------------------------------------------------
 def build_playbook_prompt(text):
     return f"""
-You are a SOAR engineer designing SOC playbooks.
+You are a senior SOAR engineer designing a SOC playbook.
 
 Return ONLY valid JSON.
 No markdown. No explanation text.
@@ -70,7 +60,10 @@ Schema:
       "outputs": [],
       "failure_handling": "",
       "sla_impact": "",
-      "analyst_notes": ""
+      "analyst_notes": "",
+      "learning_explanation": "",
+      "soc_role": "",
+      "skip_impact": ""
     }}
   ]
 }}
@@ -134,16 +127,14 @@ def build_documentation(blocks):
     return "\n\n".join(parts)
 
 # -------------------------------------------------
-# MERMAID DIAGRAM
+# MERMAID
 # -------------------------------------------------
 def generate_mermaid(blocks):
-    lines = ["flowchart LR", 'T["Alert / Detection Trigger"]:::trigger']
+    lines = ["flowchart LR"]
 
     for i, b in enumerate(blocks):
         lines.append(f'B{i}["{b["block_name"]}"]:::core')
-        if i == 0:
-            lines.append("T --> B0")
-        else:
+        if i > 0:
             lines.append(f'B{i-1} --> B{i}')
 
     lines.append('D{"Threat Confidence?"}:::decision')
@@ -151,7 +142,7 @@ def generate_mermaid(blocks):
 
     lines += [
         'HC1["Auto Containment"]:::contain',
-        'HC2["Disable / Block Entity"]:::contain',
+        'HC2["Disable / Block"]:::contain',
         'HC3["Preserve Evidence"]:::evidence',
         'HC4["Notify L2 / IR"]:::notify',
         'D -->|High| HC1',
@@ -164,7 +155,6 @@ def generate_mermaid(blocks):
     ]
 
     lines += [
-        "classDef trigger fill:#0ea5e9,color:#fff,stroke:#0369a1,stroke-width:2px",
         "classDef core fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px",
         "classDef decision fill:#f59e0b,stroke:#b45309,stroke-width:3px",
         "classDef contain fill:#dc2626,color:#fff",
@@ -193,7 +183,7 @@ def render_mermaid(code):
     <button onclick="downloadSVG()">⬇️ Download Workflow (SVG)</button>
     <div class="mermaid">{code}</div>
     """
-    components.html(html, height=700, scrolling=True)
+    components.html(html, height=650, scrolling=True)
 
 # -------------------------------------------------
 # PDF
@@ -215,14 +205,9 @@ def generate_pdf(text):
 # -------------------------------------------------
 st.title("🛡️ SOAR Playbook Generator")
 
-if output_mode == "Learning Mode":
-    st.info(
-        "🎓 **Learning Mode**\n\n"
-        "This view explains *why* each SOAR step exists, how SOC teams think, "
-        "and how SIEM detections translate into automated response."
-    )
-
+output_mode = st.radio("Output Mode", ["Learning Mode", "Deployment Mode"], horizontal=True)
 mode = st.radio("Input Type", ["Use Case", "IRP (Document Upload)"], horizontal=True)
+
 input_text = ""
 
 if mode == "IRP (Document Upload)":
@@ -241,7 +226,7 @@ if mode == "IRP (Document Upload)":
                 model="models/gemini-2.5-flash",
                 contents=build_irp_extraction_prompt(raw)
             ).text
-        with st.expander("Extracted IRP Summary (Used as Input)", expanded=True):
+        with st.expander("Extracted IRP Summary", expanded=True):
             st.markdown(st.session_state.irp_summary)
         input_text = st.session_state.irp_summary
 else:
@@ -273,13 +258,12 @@ if st.session_state.generated:
     st.success("Playbook generated")
 
     if output_mode == "Learning Mode":
-        st.subheader("📘 What You Are Learning")
-        st.markdown(
-            "- How SIEM alerts trigger SOAR workflows\n"
-            "- Why confidence-based decisions exist\n"
-            "- What can be automated vs manual\n"
-            "- How SOC escalation works\n"
-        )
+        st.header("📘 Block-Level Learning")
+        for i, b in enumerate(st.session_state.blocks, 1):
+            with st.expander(f"Step {i}: {b['block_name']}", expanded=False):
+                st.markdown(f"**Why this step exists:** {b['learning_explanation']}")
+                st.markdown(f"**SOC Role Involved:** {b['soc_role']}")
+                st.markdown(f"**If skipped:** {b['skip_impact']}")
 
     st.header("SOAR Workflow")
     render_mermaid(st.session_state.diagram_code)
