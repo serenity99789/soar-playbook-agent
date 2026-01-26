@@ -5,86 +5,61 @@ import streamlit as st
 # -------------------------------------------------
 st.set_page_config(
     page_title="SOAR Learning Platform",
-    page_icon="📘",
     layout="wide"
 )
 
 # -------------------------------------------------
-# Session state init
+# Session state initialization
 # -------------------------------------------------
-if "stage" not in st.session_state:
-    st.session_state.stage = "home"
+if "view" not in st.session_state:
+    st.session_state.view = "home"   # home | level_select | content
 
-if "selected_level" not in st.session_state:
-    st.session_state.selected_level = None
+if "level" not in st.session_state:
+    st.session_state.level = None
+
 
 # -------------------------------------------------
 # Header + Home button
 # -------------------------------------------------
-col_title, col_home = st.columns([8, 2])
+header_col, home_col = st.columns([6, 1])
 
-with col_title:
-    st.title("SOAR Learning Platform")
+with header_col:
+    st.markdown("## SOAR Learning Platform")
 
-with col_home:
+with home_col:
     if st.button("🏠 Home"):
-        st.session_state.stage = "home"
-        st.session_state.selected_level = None
+        st.session_state.view = "home"
+        st.session_state.level = None
+
 
 st.divider()
 
+
 # -------------------------------------------------
-# HERO / HOME STAGE
+# VIEW A — HOME (Hero)
 # -------------------------------------------------
-if st.session_state.stage == "home":
+if st.session_state.view == "home":
+
     st.markdown(
         """
-        <div style="text-align:center; padding:60px 0;">
-            <h1 style="font-size:42px;">Learn SOC, SIEM & SOAR the right way</h1>
-            <p style="font-size:18px; color:#555;">
-                Structured learning paths with real-world security workflows.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True
+        ### Learn how SOC teams *actually* work  
+        Not just tools — but real analyst thinking, workflows, and decisions.
+        """
     )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    center_col = st.columns([3, 2, 3])[1]
-    with center_col:
-        start = st.button(
-            "🚀 Start Learning",
-            use_container_width=True
-        )
+    if st.button("🚀 Start Learning", type="primary"):
+        st.session_state.view = "level_select"
 
-    # Style the button orange
-    st.markdown(
-        """
-        <style>
-        button[kind="primary"], button {
-            background-color: #ff4b4b !important;
-            color: white !important;
-            border-radius: 8px !important;
-            height: 3.5em !important;
-            font-size: 18px !important;
-            font-weight: 600 !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    if start:
-        st.session_state.stage = "level_select"
 
 # -------------------------------------------------
-# LEVEL SELECTION STAGE
+# VIEW B — LEVEL SELECTION
 # -------------------------------------------------
-elif st.session_state.stage == "level_select":
-    st.subheader("Select your current level")
+elif st.session_state.view == "level_select":
 
-    st.markdown("Choose the learning path that best fits your experience.")
+    st.markdown("### Select your current level")
+    st.caption("Choose the learning path that best fits your experience.")
 
     level = st.radio(
         "",
@@ -92,8 +67,121 @@ elif st.session_state.stage == "level_select":
         index=0
     )
 
-    if st.button("➡️ Continue"):
-        st.session_state.selected_level = level
-        # Next stage will be content (added later)
-        st.success(f"{level} level selected. Content coming next 🚧")
+    st.markdown("<br>", unsafe_allow_html=True)
 
+    if st.button("➡️ Continue"):
+        st.session_state.level = level
+        st.session_state.view = "content"
+
+
+# -------------------------------------------------
+# VIEW C — CONTENT
+# -------------------------------------------------
+elif st.session_state.view == "content":
+
+    left_col, right_col = st.columns([3, 2])
+
+    # -------------------------
+    # LEFT — Learning content
+    # -------------------------
+    with left_col:
+
+        st.markdown(f"### {st.session_state.level} Level — Learning Content")
+        st.markdown("#### SOC Foundations")
+
+        st.markdown("""
+        **What you’ll learn:**
+        - What a SOC actually does
+        - SOC analyst day-to-day work
+        - What SIEM means in real operations
+        - What SOAR automates (and what it doesn’t)
+        - How alerts become incidents
+        - Why humans still matter in security
+        """)
+
+        st.divider()
+
+        st.markdown("### 1. What is a SOC?")
+        st.markdown("""
+        A **Security Operations Center (SOC)** is a team responsible for
+        continuously monitoring, detecting, investigating, and responding
+        to security threats across an organization.
+
+        The SOC is not just tools — it is **people + process + technology**.
+        """)
+
+        st.markdown("### 2. SOC Analyst Day-to-Day")
+        st.markdown("""
+        A SOC analyst typically:
+        - Reviews alerts from SIEM
+        - Validates false positives
+        - Enriches alerts with context
+        - Escalates incidents when needed
+        - Documents actions taken
+        """)
+
+        st.markdown("### 3. What is SIEM?")
+        st.markdown("""
+        **SIEM** aggregates logs, correlates events, and raises alerts.
+        It answers the question:
+
+        *“Is something suspicious happening?”*
+        """)
+
+        st.markdown("### 4. What is SOAR?")
+        st.markdown("""
+        **SOAR** automates response actions **after** detection.
+        It answers the question:
+
+        *“Now that we know, what do we do?”*
+        """)
+
+        st.markdown("### 5. Alert → Incident Lifecycle")
+        st.markdown("""
+        Not every alert is an incident.
+        Analysts decide when automation can act and when human judgment is required.
+        """)
+
+        st.markdown("### 6. Why Humans Still Matter")
+        st.markdown("""
+        Automation supports analysts — it does **not replace them**.
+        Context, intent, and risk acceptance are human decisions.
+        """)
+
+        st.divider()
+
+        # -------------------------
+        # Siemmy (simple & safe)
+        # -------------------------
+        st.markdown("### 👋 Ask Siemmy")
+
+        question = st.text_input("Ask about SOC, SIEM, or SOAR")
+
+        if question:
+            st.info(
+                "Great question! In real SOCs, automation assists analysts — "
+                "but investigation and judgment remain human-led."
+            )
+
+    # -------------------------
+    # RIGHT — Workflow diagram
+    # -------------------------
+    with right_col:
+
+        st.markdown("### Workflow Diagram")
+
+        st.markdown("""
+        ```text
+        Alert Trigger
+             ↓
+        Initial Triage
+             ↓
+        Basic Enrichment
+             ↓
+        Analyst Review
+             ↓
+        Close or Escalate
+        ```
+        """)
+
+        st.caption("Typical SOC alert handling flow")
